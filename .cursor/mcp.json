@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "node",
+      "args": ["/Users/lucascharles/Desktop/remix-of-restaurant-pos-app-v-2/mcp-supabase/index.js"]
+    }
+  }
+}
+
+

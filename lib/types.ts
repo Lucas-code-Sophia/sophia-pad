@@ -1,0 +1,166 @@
+export interface User {
+  id: string
+  name: string
+  pin: string
+  role: "server" | "manager"
+  created_at: string
+}
+
+export interface Table {
+  id: string
+  table_number: string // Changed to string to support T1, I1, C1 format
+  seats: number
+  position_x: number
+  position_y: number
+  status: "available" | "occupied" | "reserved"
+  location: "T" | "I" | "C" // T=Terrace, I=Interior, C=Canapé
+  created_at: string
+}
+
+export interface Reservation {
+  id: string
+  table_id: string
+  customer_name: string
+  customer_phone?: string
+  reservation_date: string
+  reservation_time: string
+  party_size: number
+  notes?: string
+  status: "confirmed" | "seated" | "cancelled" | "completed"
+  created_at: string
+  created_by?: string
+}
+
+export interface MenuCategory {
+  id: string
+  name: string
+  type: "food" | "drink"
+  sort_order: number
+  created_at: string
+}
+
+export interface MenuItem {
+  id: string
+  category_id: string
+  name: string
+  price: number
+  type: "food" | "drink"
+  tax_rate: number
+  routing: "kitchen" | "bar"
+  created_at: string
+  out_of_stock?: boolean
+  out_of_stock_date?: string
+  category?: string
+}
+
+export interface Order {
+  id: string
+  table_id: string
+  server_id: string
+  status: "open" | "closed"
+  created_at: string
+  closed_at?: string
+}
+
+export interface OrderItem {
+  id: string
+  order_id: string
+  menu_item_id: string
+  quantity: number
+  price: number
+  status: "pending" | "to_follow" | "fired" | "completed"
+  course_number: number
+  notes?: string
+  is_complimentary: boolean
+  complimentary_reason?: string
+  created_at: string
+  fired_at?: string
+}
+
+export interface Payment {
+  id: string
+  order_id: string
+  amount: number
+  payment_method: "cash" | "card" | "other"
+  created_at: string
+}
+
+export interface PaymentItem {
+  id: string
+  payment_id: string
+  order_item_id: string
+  quantity: number
+  amount: number
+  created_at: string
+}
+
+export interface OrderItemWithPayments extends OrderItem {
+  paid_quantity: number
+  remaining_quantity: number
+}
+
+export interface KitchenTicket {
+  id: string
+  order_id: string
+  table_number: string // Changed from number to string to match table_number format
+  type: "kitchen" | "bar"
+  items: Array<{
+    name: string
+    quantity: number
+    notes?: string
+  }>
+  status: "pending" | "completed"
+  created_at: string
+}
+
+export interface PrintSettings {
+  id: string
+  setting_key: string
+  setting_value: {
+    enabled: boolean
+    printer_name: string
+    copies: number
+  }
+  updated_at: string
+}
+
+export interface SalesRecord {
+  id: string
+  order_id: string
+  total_amount: number
+  tax_amount: number
+  sale_date: string
+  created_at: string
+}
+
+export interface DailySales {
+  date: string
+  total_sales: number
+  total_tax: number
+  order_count: number
+  average_ticket: number
+}
+
+export interface DailySalesRecord {
+  id: string
+  date: string
+  table_id: string
+  table_number: string
+  order_id: string
+  server_id: string
+  server_name: string
+  total_amount: number
+  payment_method: string
+  created_at: string
+}
+
+export interface Supplement {
+  id: string
+  order_id: string
+  name: string
+  amount: number
+  notes?: string
+  is_complimentary: boolean
+  complimentary_reason?: string
+  created_at: string
+}

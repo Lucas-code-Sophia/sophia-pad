@@ -1,0 +1,18 @@
+# Configuration MCP Supabase pour Cursor
+
+Pour activer ce serveur MCP dans Cursor, ajoutez dans vos paramètres :
+
+Settings > Features > MCP Servers
+
+```json
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "node",
+      "args": ["/Users/lucascharles/Desktop/remix-of-restaurant-pos-app-v-2/mcp-supabase/index.js"]
+    }
+  }
+}
+```
+
+

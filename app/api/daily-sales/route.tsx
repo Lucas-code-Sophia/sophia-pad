@@ -1,0 +1,69 @@
+import { type NextRequest, NextResponse } from "next/server"
+import { createServerClient } from "@/lib/supabase/server"
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const date = searchParams.get("date") || new Date().toISOString().split("T")[0]
+
+    const supabase = await createServerClient()
+
+    // Get all sales for the specified date
+    const { data: sales, error } = await supabase
+      .from("daily_sales")
+      .select("*")
+      .eq("date", date)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("[v0] Error fetching daily sales:", error)
+      return NextResponse.json({ error: "Failed to fetch daily sales" }, { status: 500 })
+    }
+
+    const totalRevenue = sales?.reduce((sum, sale) => sum + Number.parseFloat(sale.total_amount.toString()), 0) || 0
+    const orderCount = sales?.length || 0
+    const averageTicket = orderCount > 0 ? totalRevenue / orderCount : 0
+
+    // Calculate TVA (assuming 10% tax rate for restaurant)
+    const totalTax = totalRevenue * 0.1
+    // </CHANGE>
+
+    // Group by server
+    const serverStats = sales?.reduce((acc: any, sale) => {
+      const serverId = sale.server_id
+      if (!acc[serverId]) {
+        acc[serverId] = {
+          server_id: serverId,
+          server_name: sale.server_name,
+          total_revenue: 0,
+          order_count: 0,
+          tables: [],
+        }
+      }
+      acc[serverId].total_revenue += Number.parseFloat(sale.total_amount.toString())
+      acc[serverId].order_count += 1
+      acc[serverId].tables.push({
+        table_number: sale.table_number,
+        amount: sale.total_amount,
+        payment_method: sale.payment_method,
+        created_at: sale.created_at,
+      })
+      return acc
+    }, {})
+
+    return NextResponse.json({
+      date,
+      sales: sales || [],
+      statistics: {
+        totalRevenue,
+        orderCount,
+        averageTicket,
+        totalTax,
+      },
+      serverStats: Object.values(serverStats || {}),
+    })
+  } catch (error) {
+    console.error("[v0] Error in daily sales API:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
