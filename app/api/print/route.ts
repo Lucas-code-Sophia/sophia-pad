@@ -1,43 +1,53 @@
-import { NextRequest, NextResponse } from "next/server"
-import { buildEposXml, sampleTicket, sendToEpos, type EposTicket } from "@/lib/epos"
+import { NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+import { buildEposXml, sendToEpos, sampleTicket } from "@/lib/epos"
 
-export async function POST(req: NextRequest) {
+type Body = {
+  kind: "kitchen" | "bar" | "suites"
+  ip?: string
+  ticket?: {
+    title?: string
+    lines?: Array<{ content: string; align?: "left" | "center" | "right"; bold?: boolean; underline?: boolean; width?: number; height?: number }>
+    cut?: boolean
+    beep?: boolean
+  }
+}
+
+export async function POST(request: Request) {
   try {
-    const body = await req.json().catch(() => ({})) as {
-      target?: "bar" | "kitchen" | "suites"
-      ip?: string
-      ticket?: {
-        title?: string
-        lines?: Array<{ content: string; align?: "left" | "center" | "right"; bold?: boolean; underline?: boolean; width?: number; height?: number }>
-        cut?: boolean
-        beep?: boolean
-      }
-      timeoutMs?: number
+    const body = (await request.json()) as Body
+    const kind = body.kind
+
+    if (!kind) {
+      return NextResponse.json({ error: "Missing kind" }, { status: 400 })
     }
 
-    const target = body.target ?? "kitchen"
-    const ip = body.ip || (target === "bar" ? process.env.PRINTER_IP_BAR : process.env.PRINTER_IP_KITCHEN)
-
-    if (!ip) {
-      return NextResponse.json(
-        { error: "Missing printer IP. Provide 'ip' in body or set PRINTER_IP_BAR / PRINTER_IP_KITCHEN in env." },
-        { status: 400 }
-      )
+    let targetIp = body.ip
+    if (!targetIp) {
+      const supabase = await createClient()
+      const { data } = await supabase
+        .from("settings")
+        .select("setting_value")
+        .eq("setting_key", "printer_ips")
+        .single()
+      const value = (data?.setting_value as any) || {}
+      targetIp = kind === "bar" ? value.bar_ip : value.kitchen_ip
     }
 
-    const incoming = body.ticket ?? sampleTicket(target)
-    const ticket: EposTicket = {
-      title: incoming.title,
-      lines: (incoming as any).lines ?? [],
-      cut: (incoming as any).cut ?? true,
-      beep: (incoming as any).beep ?? false,
+    if (!targetIp) {
+      return NextResponse.json({ error: "Printer IP not configured" }, { status: 400 })
     }
+
+    const ticket = body.ticket
+      ? { title: body.ticket.title, lines: body.ticket.lines || [], cut: body.ticket.cut, beep: body.ticket.beep }
+      : sampleTicket(kind)
+
     const xml = buildEposXml(ticket)
+    const res = await sendToEpos(targetIp, xml)
 
-    const res = await sendToEpos(ip, xml, { timeoutMs: body.timeoutMs })
-
-    return NextResponse.json({ ok: res.ok, status: res.status, response: res.body })
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || "Unknown error" }, { status: 500 })
+    return NextResponse.json({ ok: res.ok, status: res.status, body: res.body })
+  } catch (error) {
+    console.error("[v0] Error printing:", error)
+    return NextResponse.json({ error: "Failed to print" }, { status: 500 })
   }
 }

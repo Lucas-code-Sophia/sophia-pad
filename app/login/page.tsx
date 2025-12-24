@@ -50,7 +50,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-900 p-3 sm:p-4">
       <Card className="w-full max-w-md bg-slate-800 border-slate-700">
         <CardHeader className="text-center space-y-2 pb-4">
-          <CardTitle className="text-2xl sm:text-3xl font-bold text-white">Restaurant POS</CardTitle>
+          <CardTitle className="text-2xl sm:text-3xl font-bold text-white">SOPHIA PAD</CardTitle>
           <CardDescription className="text-sm sm:text-base text-slate-400">
             Entrez votre code PIN pour continuer
           </CardDescription>

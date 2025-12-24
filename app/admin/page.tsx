@@ -42,6 +42,9 @@ export default function AdminPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [editUserDialog, setEditUserDialog] = useState(false)
   const [showUsersDialog, setShowUsersDialog] = useState(false)
+  const [kitchenIp, setKitchenIp] = useState("")
+  const [barIp, setBarIp] = useState("")
+  const [savingPrint, setSavingPrint] = useState(false)
 
   useEffect(() => {
     if (!isLoading && (!user || user.role !== "manager")) {
@@ -53,6 +56,7 @@ export default function AdminPage() {
     if (user?.role === "manager") {
       fetchDailySales()
       fetchUsers()
+      fetchPrintSettings()
     }
   }, [user])
 
@@ -148,6 +152,22 @@ export default function AdminPage() {
     }
   }
 
+  const handleToggleDisabled = async (userId: string, disabled: boolean) => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disabled }),
+      })
+
+      if (response.ok) {
+        fetchUsers()
+      }
+    } catch (error) {
+      console.error("[v0] Error toggling user disabled:", error)
+    }
+  }
+
   const handleExportSales = async () => {
     try {
       const response = await fetch("/api/admin/sales/export")
@@ -189,6 +209,56 @@ export default function AdminPage() {
     } catch (error) {
       console.error("[v0] Error importing menu:", error)
       alert("Erreur lors de l'import")
+    }
+  }
+
+  const fetchPrintSettings = async () => {
+    try {
+      const res = await fetch("/api/admin/print-settings")
+      if (res.ok) {
+        const data = await res.json()
+        setKitchenIp(data.kitchen_ip || "")
+        setBarIp(data.bar_ip || "")
+      }
+    } catch (e) {
+      console.error("[v0] Error fetching print settings:", e)
+    }
+  }
+
+  const savePrintSettings = async () => {
+    try {
+      setSavingPrint(true)
+      const res = await fetch("/api/admin/print-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kitchen_ip: kitchenIp, bar_ip: barIp }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        alert(err?.error || "Échec de l'enregistrement des IPs")
+      }
+    } catch (e) {
+      alert("Échec de l'enregistrement des IPs")
+    } finally {
+      setSavingPrint(false)
+    }
+  }
+
+  const testPrint = async (kind: "kitchen" | "bar") => {
+    try {
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
+      })
+      if (res.ok) {
+        alert("Test d'impression envoyé")
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err?.error || "Échec du test d'impression")
+      }
+    } catch (e) {
+      alert("Échec du test d'impression")
     }
   }
 
@@ -460,18 +530,27 @@ export default function AdminPage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-2 p-4 sm:p-6 pt-0">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-300">Cuisine</span>
-              <span className="text-green-400">Activée</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-300">Bar</span>
-              <span className="text-green-400">Activée</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-300">Tickets</span>
-              <span className="text-green-400">Activée</span>
+          <CardContent className="space-y-3 p-4 sm:p-6 pt-0">
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <Label className="text-sm text-slate-300">IP Cuisine</Label>
+                <Input value={kitchenIp} onChange={(e) => setKitchenIp(e.target.value)} className="bg-slate-700 border-slate-600 text-sm" placeholder="192.168.1.30" />
+              </div>
+              <div>
+                <Label className="text-sm text-slate-300">IP Bar</Label>
+                <Input value={barIp} onChange={(e) => setBarIp(e.target.value)} className="bg-slate-700 border-slate-600 text-sm" placeholder="192.168.1.31" />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={savePrintSettings} disabled={savingPrint} className="bg-blue-600 hover:bg-blue-700">
+                  Enregistrer
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => testPrint("kitchen")} className="bg-slate-600 hover:bg-slate-500 border-slate-500">
+                  Test Cuisine
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => testPrint("bar")} className="bg-slate-600 hover:bg-slate-500 border-slate-500">
+                  Test Bar
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -498,7 +577,7 @@ export default function AdminPage() {
       </div>
 
       <Dialog open={showUsersDialog} onOpenChange={setShowUsersDialog}>
-        <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -512,7 +591,7 @@ export default function AdminPage() {
                     Ajouter
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="bg-slate-800 text-white border-slate-700">
+                <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-md">
                   <DialogHeader>
                     <DialogTitle>Créer un nouvel utilisateur</DialogTitle>
                     <DialogDescription className="text-slate-400">
@@ -562,15 +641,21 @@ export default function AdminPage() {
           <div className="space-y-2 mt-4">
             {users.map((u) => (
               <Card key={u.id} className="bg-slate-700 border-slate-600 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-white">{u.name}</div>
-                    <div className="text-sm text-slate-400">
-                      {u.role === "manager" ? "Manager" : "Serveur"} • PIN:{" "}
-                      <span className="font-mono font-bold text-blue-400">{u.pin}</span>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-white flex items-center gap-2">
+                      <span className="truncate max-w-[40vw] md:max-w-[28rem]">{u.name}</span>
+                      {u.disabled && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-500 text-white/90 uppercase tracking-wide">Off</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-slate-300 flex flex-wrap items-center gap-2">
+                      <span>{u.role === "manager" ? "Manager" : "Serveur"}</span>
+                      <span className="text-slate-600">•</span>
+                      <span>PIN: <span className="font-mono font-bold text-blue-400">{u.pin}</span></span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 justify-end">
                     <Button
                       size="sm"
                       variant="outline"
@@ -581,6 +666,14 @@ export default function AdminPage() {
                       className="bg-slate-600 hover:bg-slate-500 border-slate-500"
                     >
                       Modifier
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleToggleDisabled(u.id, !u.disabled)}
+                      className={`${u.disabled ? "bg-green-900/30 hover:bg-green-900/50 border-green-700 text-green-400" : "bg-yellow-900/30 hover:bg-yellow-900/50 border-yellow-700 text-yellow-400"}`}
+                    >
+                      {u.disabled ? "Activer" : "Désactiver"}
                     </Button>
                     <Button
                       size="sm"

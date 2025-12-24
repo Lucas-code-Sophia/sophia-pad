@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
-import type { Table } from "@/lib/types"
+import type { Table, Reservation } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { LogOut, User, Settings, Plus, List, Calendar, Search, History } from "lucide-react"
@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { toast } from "@/components/ui/use-toast"
 
 export default function FloorPlanPage() {
   const { user, logout, isLoading } = useAuth()
@@ -27,6 +28,13 @@ export default function FloorPlanPage() {
   const [showAddTable, setShowAddTable] = useState(false)
   const [showTableList, setShowTableList] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [showReservationEditor, setShowReservationEditor] = useState(false)
+  const [reservationLoading, setReservationLoading] = useState(false)
+  const [reservationEdit, setReservationEdit] = useState<Reservation | null>(null)
+  const [reservationTableLabel, setReservationTableLabel] = useState<string>("")
+  const [reservationTableId, setReservationTableId] = useState<string>("")
+  const [reservationsByTable, setReservationsByTable] = useState<Record<string, Reservation[]>>({})
+  const [reservationsForDay, setReservationsForDay] = useState<Reservation[]>([])
   const [newTable, setNewTable] = useState({
     table_number: "",
     seats: 2,
@@ -39,13 +47,100 @@ export default function FloorPlanPage() {
     }
   }, [user, isLoading, router])
 
+  const getTodaySummary = (tableId: string) => {
+    const arr = reservationsByTable[tableId] || []
+    if (arr.length === 0) return ""
+    return arr.map((r) => `${r.party_size}p - ${r.reservation_time.slice(0, 5).replace(":", "h")}`).join(", ")
+  }
+
+  const handleReservationField = (key: keyof Reservation, value: any) => {
+    if (!reservationEdit) return
+    setReservationEdit({ ...reservationEdit, [key]: value })
+  }
+
+  const saveReservation = async () => {
+    if (!reservationEdit) return
+    try {
+      const res = await fetch(`/api/reservations/${reservationEdit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_name: reservationEdit.customer_name,
+          customer_phone: reservationEdit.customer_phone,
+          reservation_date: reservationEdit.reservation_date,
+          reservation_time: reservationEdit.reservation_time,
+          duration_minutes: reservationEdit.duration_minutes ?? 120,
+          party_size: reservationEdit.party_size,
+          notes: reservationEdit.notes,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast({ title: "Erreur", description: err?.error || "Échec de la sauvegarde", variant: "destructive" as any })
+        return
+      }
+      setShowReservationEditor(false)
+    } catch (e) {
+      toast({ title: "Erreur", description: "Échec de la sauvegarde", variant: "destructive" as any })
+    } finally {
+      fetchTables()
+    }
+  }
+
+  const setReservationStatus = async (status: "seated" | "cancelled" | "completed") => {
+    if (!reservationEdit) return
+    try {
+      const res = await fetch(`/api/reservations/${reservationEdit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast({ title: "Erreur", description: err?.error || "Échec de la mise à jour", variant: "destructive" as any })
+        return
+      }
+      setShowReservationEditor(false)
+    } catch (e) {
+      toast({ title: "Erreur", description: "Échec de la mise à jour", variant: "destructive" as any })
+    } finally {
+      fetchTables()
+      if (status === "seated") {
+        const targetTableId = reservationTableId || reservationEdit.table_id
+        router.push(`/order/${targetTableId}`)
+      }
+    }
+  }
+
   useEffect(() => {
     if (user) {
       fetchTables()
-      // Refresh tables every 10 seconds
+      fetchReservationsForToday()
+      // Refresh periodically
       const interval = setInterval(fetchTables, 10000)
-      return () => clearInterval(interval)
+      const rInterval = setInterval(fetchReservationsForToday, 15000)
+      return () => {
+        clearInterval(interval)
+        clearInterval(rInterval)
+      }
     }
+  }, [user])
+
+  // Run a one-time cleanup for past-day confirmed reservations to free tables
+  useEffect(() => {
+    if (!user) return
+    const runCleanup = async () => {
+      try {
+        await fetch("/api/reservations/cleanup", { method: "POST" })
+        // After cleanup, refresh tables
+        fetchTables()
+      } catch (e) {
+        // ignore errors silently in UI
+      }
+    }
+    runCleanup()
+    // run once on mount when user is present
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   const fetchTables = async () => {
@@ -62,11 +157,70 @@ export default function FloorPlanPage() {
     }
   }
 
-  const handleTableClick = (table: Table) => {
+  const fetchReservationsForToday = async () => {
+    try {
+      const today = new Date()
+      const yyyy = today.getFullYear()
+      const mm = String(today.getMonth() + 1).padStart(2, "0")
+      const dd = String(today.getDate()).padStart(2, "0")
+      const dateStr = `${yyyy}-${mm}-${dd}`
+      const response = await fetch(`/api/reservations?date=${dateStr}`)
+      if (response.ok) {
+        const data: Reservation[] = await response.json()
+        const map: Record<string, Reservation[]> = {}
+        for (const r of data) {
+          if (!map[r.table_id]) map[r.table_id] = []
+          map[r.table_id].push(r)
+        }
+        for (const k of Object.keys(map)) {
+          map[k].sort((a, b) => (a.reservation_time < b.reservation_time ? -1 : 1))
+        }
+        setReservationsByTable(map)
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const handleTableClick = async (table: Table) => {
     if (table.status === "available") {
       router.push(`/order/${table.id}`)
     } else if (table.status === "occupied") {
       router.push(`/order/${table.id}`)
+    } else if (table.status === "reserved") {
+      // Open inline reservation editor for the reserved table
+      setReservationTableLabel(table.table_number)
+      setReservationTableId(table.id)
+      setShowReservationEditor(true)
+      setReservationLoading(true)
+      try {
+        const today = new Date()
+        const yyyy = today.getFullYear()
+        const mm = String(today.getMonth() + 1).padStart(2, "0")
+        const dd = String(today.getDate()).padStart(2, "0")
+        const dateStr = `${yyyy}-${mm}-${dd}`
+        const res = await fetch(`/api/reservations/by-table?tableId=${table.id}&date=${dateStr}`)
+        if (res.ok) {
+          const data = await res.json()
+          setReservationsForDay(Array.isArray(data) ? data : [])
+          // Preselect the next upcoming confirmed reservation if any
+          const upcoming = (Array.isArray(data) ? data : [])
+            .filter((r: Reservation) => r.status === "confirmed")
+            .sort((a: Reservation, b: Reservation) => (a.reservation_time < b.reservation_time ? -1 : 1))
+          setReservationEdit(upcoming[0] ?? null)
+        } else {
+          setReservationsForDay([])
+          setReservationEdit(null)
+          const err = await res.json().catch(() => ({}))
+          toast({ title: "Erreur", description: err?.error || "Chargement des réservations échoué", variant: "destructive" as any })
+        }
+      } catch (e) {
+        setReservationsForDay([])
+        setReservationEdit(null)
+        toast({ title: "Erreur", description: "Chargement des réservations échoué", variant: "destructive" as any })
+      } finally {
+        setReservationLoading(false)
+      }
     }
   }
 
@@ -102,9 +256,144 @@ export default function FloorPlanPage() {
 
   if (isLoading || loading) {
     return (
+      <>
       <div className="flex min-h-screen items-center justify-center bg-slate-900">
         <div className="text-white text-xl">Chargement...</div>
       </div>
+
+      {/* Inline Reservation Editor */}
+      <Dialog open={showReservationEditor} onOpenChange={setShowReservationEditor}>
+        <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-[95vw] sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Réservation – Table {reservationTableLabel}
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Voir et modifier la réservation confirmée associée à cette table
+            </DialogDescription>
+          </DialogHeader>
+          {/* List of today's reservations for this table */}
+          {!reservationLoading && (
+            <div className="mb-3">
+              <div className="text-xs uppercase tracking-wide text-slate-400 mb-2">Réservations du jour</div>
+              <div className="max-h-80 overflow-y-auto space-y-1">
+              {reservationsForDay.length === 0 ? (
+                <div className="text-slate-400 text-sm text-center py-2">Aucune réservation aujourd'hui pour cette table.</div>
+              ) : (
+                reservationsForDay.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => setReservationEdit(r)}
+                    className={`w-full text-left px-3 py-2 rounded border ${
+                      reservationEdit?.id === r.id ? "border-blue-500 bg-slate-700" : "border-slate-600 bg-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="font-medium">{r.customer_name || "Sans nom"}</div>
+                      <div className="text-slate-300">{r.reservation_time}</div>
+                    </div>
+                    <div className="text-xs text-slate-400">{r.party_size} pers • {r.status}</div>
+                  </button>
+                ))
+              )}
+              </div>
+            </div>
+          )}
+          {reservationLoading ? (
+            <div className="py-6 text-center text-slate-300">Chargement…</div>
+          ) : !reservationEdit ? (
+            <div className="py-6 text-center text-slate-400 text-sm">Aucune réservation confirmée trouvée pour cette table.</div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm">Nom</Label>
+                <Input
+                  value={reservationEdit.customer_name}
+                  onChange={(e) => handleReservationField("customer_name", e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-sm">Téléphone</Label>
+                <Input
+                  value={reservationEdit.customer_phone || ""}
+                  onChange={(e) => handleReservationField("customer_phone", e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-sm">Date</Label>
+                  <Input
+                    type="date"
+                    value={reservationEdit.reservation_date}
+                    onChange={(e) => handleReservationField("reservation_date", e.target.value)}
+                    className="bg-slate-700 border-slate-600 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Heure</Label>
+                  <Input
+                    type="time"
+                    value={reservationEdit.reservation_time}
+                    onChange={(e) => handleReservationField("reservation_time", e.target.value)}
+                    className="bg-slate-700 border-slate-600 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm">Durée (minutes)</Label>
+                <Input
+                  type="number"
+                  min="15"
+                  step="5"
+                  value={reservationEdit.duration_minutes ?? 120}
+                  onChange={(e) => handleReservationField("duration_minutes" as any, Number.parseInt(e.target.value || "0"))}
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-sm">Personnes</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={reservationEdit.party_size}
+                  onChange={(e) => handleReservationField("party_size", Number.parseInt(e.target.value))}
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-sm">Notes</Label>
+                <Input
+                  value={reservationEdit.notes || ""}
+                  onChange={(e) => handleReservationField("notes", e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button onClick={saveReservation} className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm">
+                  Enregistrer
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setReservationStatus("seated")}
+                  className="flex-1 bg-green-900/30 hover:bg-green-900/50 border-green-700 text-green-400 text-xs sm:text-sm"
+                >
+                  Installer
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setReservationStatus("cancelled")}
+                  className="flex-1 bg-red-900/30 hover:bg-red-900/50 border-red-700 text-red-400 text-xs sm:text-sm"
+                >
+                  No-show
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      </>
     )
   }
 
@@ -369,7 +658,12 @@ export default function FloorPlanPage() {
                 onClick={() => handleTableClick(table)}
                 className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(table.status)} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
               >
-                {table.table_number}
+                <div className="flex flex-col items-center leading-tight text-center">
+                  <div>{table.table_number}</div>
+                  {getTodaySummary(table.id) && (
+                    <div className="text-[10px] sm:text-xs opacity-90 mt-0.5 text-white/90 px-1">{getTodaySummary(table.id)}</div>
+                  )}
+                </div>
               </button>
             ))}
           </div>
@@ -387,7 +681,12 @@ export default function FloorPlanPage() {
                   onClick={() => handleTableClick(table)}
                   className={`h-20 sm:h-24 rounded-lg border-2 transition-all ${getStatusColor(table.status)} text-white font-semibold shadow-lg flex items-center justify-center text-base sm:text-xl`}
                 >
-                  {table.table_number}
+                  <div className="flex flex-col items-center leading-tight text-center">
+                    <div>{table.table_number}</div>
+                    {getTodaySummary(table.id) && (
+                      <div className="text-[10px] sm:text-xs opacity-90 mt-0.5 text-white/90 px-1">{getTodaySummary(table.id)}</div>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
@@ -403,7 +702,12 @@ export default function FloorPlanPage() {
                   onClick={() => handleTableClick(table)}
                   className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(table.status)} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
                 >
-                  {table.table_number}
+                  <div className="flex flex-col items-center leading-tight text-center">
+                    <div>{table.table_number}</div>
+                    {getTodaySummary(table.id) && (
+                      <div className="text-[10px] sm:text-xs opacity-90 mt-0.5 text-white/90 px-1">{getTodaySummary(table.id)}</div>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
@@ -420,7 +724,12 @@ export default function FloorPlanPage() {
                 onClick={() => handleTableClick(table)}
                 className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(table.status)} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
               >
-                {table.table_number}
+                <div className="flex flex-col items-center leading-tight text-center">
+                  <div>{table.table_number}</div>
+                  {getTodaySummary(table.id) && (
+                    <div className="text-[10px] sm:text-xs opacity-90 mt-0.5 text-white/90 px-1">{getTodaySummary(table.id)}</div>
+                  )}
+                </div>
               </button>
             ))}
           </div>
@@ -454,6 +763,102 @@ export default function FloorPlanPage() {
           </div>
         </Card>
       </div>
+
+      {/* Inline Reservation Editor */}
+      <Dialog open={showReservationEditor} onOpenChange={setShowReservationEditor}>
+        <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Réservation – Table {reservationTableLabel}
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Voir et modifier la réservation confirmée associée à cette table
+            </DialogDescription>
+          </DialogHeader>
+          {reservationLoading ? (
+            <div className="py-6 text-center text-slate-300">Chargement…</div>
+          ) : !reservationEdit ? (
+            <div className="py-6 text-center text-slate-400 text-sm">Aucune réservation confirmée trouvée pour cette table.</div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm">Nom</Label>
+                <Input
+                  value={reservationEdit?.customer_name || ""}
+                  onChange={(e) => handleReservationField("customer_name", e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-sm">Téléphone</Label>
+                <Input
+                  value={reservationEdit?.customer_phone || ""}
+                  onChange={(e) => handleReservationField("customer_phone", e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-sm">Date</Label>
+                  <Input
+                    type="date"
+                    value={reservationEdit?.reservation_date || ""}
+                    onChange={(e) => handleReservationField("reservation_date", e.target.value)}
+                    className="bg-slate-700 border-slate-600 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Heure</Label>
+                  <Input
+                    type="time"
+                    value={reservationEdit?.reservation_time || ""}
+                    onChange={(e) => handleReservationField("reservation_time", e.target.value)}
+                    className="bg-slate-700 border-slate-600 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="textsm">Personnes</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={reservationEdit?.party_size ?? 1}
+                  onChange={(e) => handleReservationField("party_size", Number.parseInt(e.target.value))}
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-sm">Notes</Label>
+                <Input
+                  value={reservationEdit?.notes || ""}
+                  onChange={(e) => handleReservationField("notes", e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button onClick={saveReservation} className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm">
+                  Enregistrer
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setReservationStatus("seated")}
+                  className="flex-1 bg-green-900/30 hover:bg-green-900/50 border-green-700 text-green-400 text-xs sm:text-sm"
+                >
+                  Installer
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setReservationStatus("cancelled")}
+                  className="flex-1 bg-red-900/30 hover:bg-red-900/50 border-red-700 text-red-400 text-xs sm:text-sm"
+                >
+                  No-show
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }

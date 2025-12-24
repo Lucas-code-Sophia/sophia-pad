@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { name, pin } = await request.json()
+    const { name, pin, disabled } = await request.json()
     const supabase = await createClient()
 
     // Validation du PIN si fourni (6 chiffres)
@@ -14,6 +14,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const updateData: any = {}
     if (name) updateData.name = name
     if (pin) updateData.pin = pin
+    if (typeof disabled === "boolean") updateData.disabled = disabled
 
     const { error } = await supabase.from("users").update(updateData).eq("id", params.id)
 

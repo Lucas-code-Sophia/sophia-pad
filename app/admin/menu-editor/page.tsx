@@ -25,7 +25,7 @@ export default function MenuEditorPage() {
     price: "",
     tax_rate: "20",
     category: "",
-    routing: "cuisine" as "cuisine" | "bar",
+    routing: "kitchen" as "kitchen" | "bar",
     out_of_stock: false,
   })
 
@@ -81,7 +81,7 @@ export default function MenuEditorPage() {
       if (response.ok) {
         setEditDialog(false)
         setEditingItem(null)
-        setNewItem({ name: "", price: "", tax_rate: "20", category: "", routing: "cuisine", out_of_stock: false })
+        setNewItem({ name: "", price: "", tax_rate: "20", category: "", routing: "kitchen", out_of_stock: false })
         fetchMenu()
       }
     } catch (error) {
@@ -217,8 +217,7 @@ export default function MenuEditorPage() {
                         )}
                       </div>
                       <div className="text-xs sm:text-sm text-slate-400">
-                        {item.price.toFixed(2)} € • TVA {item.tax_rate}% •{" "}
-                        {item.routing === "cuisine" ? "Cuisine" : "Bar"}
+                        {item.price.toFixed(2)} € • TVA {item.tax_rate}% • {item.routing === "kitchen" ? "Cuisine" : "Bar"}
                       </div>
                     </div>
                     <div className="flex gap-1.5 sm:gap-2 flex-shrink-0">
@@ -281,7 +280,7 @@ export default function MenuEditorPage() {
             <div>
               <Label className="text-sm">Nom</Label>
               <Input
-                value={editingItem ? editingItem.name : newItem.name}
+                value={editingItem ? editingItem.name ?? "" : newItem.name}
                 onChange={(e) =>
                   editingItem
                     ? setEditingItem({ ...editingItem, name: e.target.value })
@@ -296,7 +295,7 @@ export default function MenuEditorPage() {
                 <Input
                   type="number"
                   step="0.01"
-                  value={editingItem ? editingItem.price : newItem.price}
+                  value={editingItem ? (Number.isFinite((editingItem as any).price) ? editingItem.price : "") : newItem.price}
                   onChange={(e) =>
                     editingItem
                       ? setEditingItem({ ...editingItem, price: Number.parseFloat(e.target.value) })
@@ -309,7 +308,7 @@ export default function MenuEditorPage() {
                 <Label className="text-sm">TVA (%)</Label>
                 <Input
                   type="number"
-                  value={editingItem ? editingItem.tax_rate : newItem.tax_rate}
+                  value={editingItem ? (Number.isFinite((editingItem as any).tax_rate) ? editingItem.tax_rate : "") : newItem.tax_rate}
                   onChange={(e) =>
                     editingItem
                       ? setEditingItem({ ...editingItem, tax_rate: Number.parseFloat(e.target.value) })
@@ -322,7 +321,7 @@ export default function MenuEditorPage() {
             <div>
               <Label className="text-sm">Catégorie</Label>
               <Input
-                value={editingItem ? editingItem.category : newItem.category}
+                value={editingItem ? (editingItem.category ?? "") : (newItem.category ?? "")}
                 onChange={(e) =>
                   editingItem
                     ? setEditingItem({ ...editingItem, category: e.target.value })
@@ -340,15 +339,15 @@ export default function MenuEditorPage() {
             <div>
               <Label className="text-sm">Impression</Label>
               <select
-                value={editingItem ? editingItem.routing : newItem.routing}
+                value={editingItem ? ((editingItem as any).routing || newItem.routing) : newItem.routing}
                 onChange={(e) =>
                   editingItem
-                    ? setEditingItem({ ...editingItem, routing: e.target.value as "cuisine" | "bar" })
-                    : setNewItem({ ...newItem, routing: e.target.value as "cuisine" | "bar" })
+                    ? setEditingItem({ ...editingItem, routing: e.target.value as "kitchen" | "bar" })
+                    : setNewItem({ ...newItem, routing: e.target.value as "kitchen" | "bar" })
                 }
                 className="w-full bg-slate-700 border-slate-600 rounded-md p-2 text-white text-sm"
               >
-                <option value="cuisine">Cuisine</option>
+                <option value="kitchen">Cuisine</option>
                 <option value="bar">Bar</option>
               </select>
             </div>

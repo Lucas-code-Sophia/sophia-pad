@@ -3,6 +3,7 @@ export interface User {
   name: string
   pin: string
   role: "server" | "manager"
+  disabled?: boolean
   created_at: string
 }
 
@@ -27,6 +28,7 @@ export interface Reservation {
   party_size: number
   notes?: string
   status: "confirmed" | "seated" | "cancelled" | "completed"
+  duration_minutes?: number
   created_at: string
   created_by?: string
 }

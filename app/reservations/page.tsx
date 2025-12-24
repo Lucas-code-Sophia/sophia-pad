@@ -35,6 +35,7 @@ export default function ReservationsPage() {
     reservation_date: new Date().toISOString().split("T")[0],
     reservation_time: "19:00",
     party_size: 2,
+    duration_minutes: 120,
     notes: "",
     created_by: "",
   })
@@ -96,6 +97,7 @@ export default function ReservationsPage() {
           reservation_date: new Date().toISOString().split("T")[0],
           reservation_time: "19:00",
           party_size: 2,
+          duration_minutes: 120,
           notes: "",
           created_by: user?.id || "",
         })
@@ -245,6 +247,19 @@ export default function ReservationsPage() {
                   />
                 </div>
               </div>
+              <div>
+                <Label className="text-sm">Durée (minutes)</Label>
+                <Input
+                  type="number"
+                  min="15"
+                  step="5"
+                  value={newReservation.duration_minutes}
+                  onChange={(e) =>
+                    setNewReservation({ ...newReservation, duration_minutes: Number.parseInt(e.target.value || "0") })
+                  }
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <div>
                   <Label className="text-sm">Nombre de personnes</Label>
@@ -268,13 +283,11 @@ export default function ReservationsPage() {
                       <SelectValue placeholder="Choisir..." />
                     </SelectTrigger>
                     <SelectContent className="bg-slate-700 border-slate-600">
-                      {tables
-                        .filter((t) => t.status === "available")
-                        .map((table) => (
-                          <SelectItem key={table.id} value={table.id} className="text-sm">
-                            {table.table_number} ({table.seats} places)
-                          </SelectItem>
-                        ))}
+                      {tables.map((table) => (
+                        <SelectItem key={table.id} value={table.id} className="text-sm">
+                          {table.table_number} ({table.seats} places)
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -371,7 +384,7 @@ export default function ReservationsPage() {
                       className="flex-1 bg-red-900/30 hover:bg-red-900/50 border-red-700 text-red-400 text-xs sm:text-sm"
                     >
                       <XCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                      Annuler
+                      No-show
                     </Button>
                   </div>
                 )}

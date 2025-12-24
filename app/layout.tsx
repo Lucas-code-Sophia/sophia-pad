@@ -1,5 +1,5 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { AuthProvider } from "@/lib/auth-context"
 import "./globals.css"
@@ -12,7 +12,6 @@ export const metadata: Metadata = {
   description: "Point of Sale System for Restaurants",
   generator: "v0.app",
   manifest: "/manifest.json",
-  themeColor: "#0f172a",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -34,6 +33,10 @@ export const metadata: Metadata = {
   },
 }
 
+export const viewport: Viewport = {
+  themeColor: "#0f172a",
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -50,7 +53,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
       </head>
-      <body className={`font-sans antialiased`}>
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

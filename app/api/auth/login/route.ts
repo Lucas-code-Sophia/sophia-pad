@@ -13,6 +13,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid PIN" }, { status: 401 })
     }
 
+    if (user.disabled) {
+      return NextResponse.json({ error: "Compte désactivé" }, { status: 403 })
+    }
+
     // Don't send the PIN back to the client
     const { pin: _, ...userWithoutPin } = user
 
