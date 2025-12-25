@@ -182,12 +182,19 @@ export default function FloorPlanPage() {
     }
   }
 
+  const getTableStatus = (table: Table): "available" | "occupied" | "reserved" => {
+    if (table.status === "occupied") return "occupied"
+    const hasToday = (reservationsByTable[table.id] || []).length > 0
+    return hasToday ? "reserved" : "available"
+  }
+
   const handleTableClick = async (table: Table) => {
-    if (table.status === "available") {
+    const status = getTableStatus(table)
+    if (status === "available") {
       router.push(`/order/${table.id}`)
-    } else if (table.status === "occupied") {
+    } else if (status === "occupied") {
       router.push(`/order/${table.id}`)
-    } else if (table.status === "reserved") {
+    } else if (status === "reserved") {
       // Open inline reservation editor for the reserved table
       setReservationTableLabel(table.table_number)
       setReservationTableId(table.id)
@@ -522,7 +529,7 @@ export default function FloorPlanPage() {
                   filterTables(sortTablesByNumber([...tables])).map((table) => (
                     <Card
                       key={table.id}
-                      className={`p-4 cursor-pointer ${getStatusColor(table.status)} border-2`}
+                      className={`p-4 cursor-pointer ${getStatusColor(getTableStatus(table))} border-2`}
                       onClick={() => {
                         setShowTableList(false)
                         setSearchQuery("")
@@ -536,11 +543,10 @@ export default function FloorPlanPage() {
                         </div>
                         <div className="text-right">
                           <div className="text-sm sm:text-base font-semibold">
-                            {table.status === "available"
-                              ? "Libre"
-                              : table.status === "occupied"
-                                ? "Occupée"
-                                : "Réservée"}
+                            {(() => {
+                              const s = getTableStatus(table)
+                              return s === "available" ? "Libre" : s === "occupied" ? "Occupée" : "Réservée"
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -656,7 +662,7 @@ export default function FloorPlanPage() {
               <button
                 key={table.id}
                 onClick={() => handleTableClick(table)}
-                className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(table.status)} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
+                className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(getTableStatus(table))} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
               >
                 <div className="flex flex-col items-center leading-tight text-center">
                   <div>{table.table_number}</div>
@@ -679,7 +685,7 @@ export default function FloorPlanPage() {
                 <button
                   key={table.id}
                   onClick={() => handleTableClick(table)}
-                  className={`h-20 sm:h-24 rounded-lg border-2 transition-all ${getStatusColor(table.status)} text-white font-semibold shadow-lg flex items-center justify-center text-base sm:text-xl`}
+                  className={`h-20 sm:h-24 rounded-lg border-2 transition-all ${getStatusColor(getTableStatus(table))} text-white font-semibold shadow-lg flex items-center justify-center text-base sm:text-xl`}
                 >
                   <div className="flex flex-col items-center leading-tight text-center">
                     <div>{table.table_number}</div>
@@ -700,7 +706,7 @@ export default function FloorPlanPage() {
                 <button
                   key={table.id}
                   onClick={() => handleTableClick(table)}
-                  className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(table.status)} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
+                  className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(getTableStatus(table))} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
                 >
                   <div className="flex flex-col items-center leading-tight text-center">
                     <div>{table.table_number}</div>
@@ -722,7 +728,7 @@ export default function FloorPlanPage() {
               <button
                 key={table.id}
                 onClick={() => handleTableClick(table)}
-                className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(table.status)} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
+                className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(getTableStatus(table))} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
               >
                 <div className="flex flex-col items-center leading-tight text-center">
                   <div>{table.table_number}</div>
