@@ -1,11 +1,21 @@
+export const runtime = "nodejs"
+
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
 export async function POST(request: NextRequest) {
   try {
     const { pin } = await request.json()
 
-    const supabase = await createClient()
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!url || !serviceKey) {
+      console.error("[v0] Missing Supabase env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+      return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 })
+    }
+
+    const supabase = createSupabaseClient(url, serviceKey)
 
     const { data: user, error } = await supabase.from("users").select("*").eq("pin", pin).single()
 
