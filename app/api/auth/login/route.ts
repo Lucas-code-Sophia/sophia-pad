@@ -19,7 +19,10 @@ export async function POST(request: NextRequest) {
 
     const { data: user, error } = await supabase.from("users").select("*").eq("pin", pin).single()
 
+    console.log("[v0] Supabase query result:", { user, error, pin: pin.substring(0, 2) + "***" })
+
     if (error || !user) {
+      console.log("[v0] Auth failed:", { error: error?.message, userFound: !!user })
       return NextResponse.json({ error: "Invalid PIN" }, { status: 401 })
     }
 

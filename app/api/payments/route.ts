@@ -33,8 +33,8 @@ export async function POST(request: NextRequest) {
             paymentItems.push({
               payment_id: paymentData.id,
               order_item_id: orderItemId,
-              quantity: quantity,
-              amount: orderItem.price * (quantity as number),
+              quantity: Number(quantity),
+              amount: orderItem.price * Number(quantity),
             })
           }
         }
@@ -69,14 +69,17 @@ export async function POST(request: NextRequest) {
       await supabase.from("orders").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", orderId)
       await supabase.from("tables").update({ status: "available" }).eq("id", tableId)
 
-      const { data: orderData } = await supabase.from("orders").select("server_id, table_id").eq("id", orderId).single()
+      const { data: orderData } = await supabase.from("orders").select("server_id, table_id, created_at").eq("id", orderId).single()
 
       const { data: serverData } = await supabase.from("users").select("name").eq("id", orderData?.server_id).single()
 
       const { data: tableData } = await supabase.from("tables").select("table_number").eq("id", tableId).single()
 
+      // Use the order creation date for sales records
+      const saleDate = orderData?.created_at ? new Date(orderData.created_at).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]
+
       await supabase.from("daily_sales").insert({
-        date: new Date().toISOString().split("T")[0],
+        date: saleDate,
         table_id: tableId,
         table_number: tableData?.table_number || "",
         order_id: orderId,

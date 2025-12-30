@@ -166,3 +166,35 @@ export interface Supplement {
   complimentary_reason?: string
   created_at: string
 }
+
+export interface PlanningFolder {
+  id: string
+  name: string
+  date_start: string
+  date_end: string
+  status: "draft" | "validated"
+  created_at: string
+  updated_at: string
+}
+
+export interface PlanningMain {
+  id: string
+  folder_id: string
+  title: string
+  week_start: string
+  week_end: string
+  status: "draft" | "validated"
+  created_at: string
+  updated_at: string
+}
+
+export interface PlanningAssignment {
+  id: string
+  planning_id: string
+  date: string
+  service: "lunch" | "dinner"
+  employee_id: string
+  work_start: string | null
+  work_end: string | null
+  created_at: string
+}

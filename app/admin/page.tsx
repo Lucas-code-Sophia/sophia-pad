@@ -18,6 +18,7 @@ import {
   Gift,
   FileText,
   BarChart3,
+  Calendar,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -360,6 +361,30 @@ export default function AdminPage() {
           <CardContent className="p-4 sm:p-6 pt-0">
             <p className="text-slate-300 text-xs sm:text-sm">
               Créer, modifier et supprimer les comptes serveurs et managers
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="bg-slate-800 border-slate-700 hover:border-blue-500 transition-colors cursor-pointer"
+          onClick={() => router.push("/admin/planning")}
+        >
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-600 rounded-lg">
+                <Calendar className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-white text-base sm:text-lg">Planning</CardTitle>
+                <CardDescription className="text-slate-400 text-xs sm:text-sm">
+                  Gestion des plannings
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6 pt-0">
+            <p className="text-slate-300 text-xs sm:text-sm">
+              Créer et gérer les dossiers de planning du personnel
             </p>
           </CardContent>
         </Card>
