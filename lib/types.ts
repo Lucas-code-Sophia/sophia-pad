@@ -70,7 +70,7 @@ export interface OrderItem {
   menu_item_id: string
   quantity: number
   price: number
-  status: "pending" | "to_follow" | "fired" | "completed"
+  status: "pending" | "to_follow_1" | "to_follow_2" | "fired" | "completed"
   course_number: number
   notes?: string
   is_complimentary: boolean

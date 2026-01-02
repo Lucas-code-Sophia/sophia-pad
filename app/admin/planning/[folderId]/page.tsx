@@ -326,6 +326,35 @@ export default function PlanningFolderPage({ params }: { params: Promise<{ folde
     }
   }
 
+  const toggleFolderStatus = async () => {
+    if (!folder || !folderId) return
+    
+    const newStatus = folder.status === "validated" ? "draft" : "validated"
+    const confirmMessage = newStatus === "validated" 
+      ? "Voulez-vous valider ce dossier ? Les plannings ne pourront plus être modifiés." 
+      : "Voulez-vous repasser ce dossier en brouillon ?"
+    
+    if (!confirm(confirmMessage)) return
+
+    try {
+      const response = await fetch(`/api/admin/planning/folders/${folderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (response.ok) {
+        const updatedFolder = await response.json()
+        setFolder(updatedFolder)
+      } else {
+        alert("Erreur lors de la modification du statut")
+      }
+    } catch (error) {
+      console.error("Error updating folder status:", error)
+      alert("Erreur lors de la modification du statut")
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("fr-FR", {
       weekday: "long",
@@ -389,6 +418,13 @@ export default function PlanningFolderPage({ params }: { params: Promise<{ folde
             >
               <Calendar className="h-4 w-4 mr-2" />
               Plannings
+            </Button>
+            <Button
+              onClick={toggleFolderStatus}
+              variant="outline"
+              className="border-slate-600 text-white hover:bg-slate-700"
+            >
+              {folder.status === "validated" ? "Repasser en brouillon" : "Valider le dossier"}
             </Button>
           <Badge
             variant={folder.status === "validated" ? "default" : "secondary"}

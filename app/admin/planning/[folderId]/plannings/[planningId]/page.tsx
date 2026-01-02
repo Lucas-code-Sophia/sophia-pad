@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { TimeInput } from "@/components/ui/time-input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Trash2, Plus, Copy, Clock, Users } from "lucide-react"
+import { ArrowLeft, Trash2, Plus, Copy, Clock, Users, Download } from "lucide-react"
 import type { PlanningAssignment, PlanningFolder, PlanningMain } from "@/lib/types"
+import * as XLSX from 'xlsx'
 
 type EmployeeRow = {
   id: string
@@ -80,6 +82,241 @@ export default function PlanningWeekPage({ params }: { params: Promise<{ folderI
   const [duplicating, setDuplicating] = useState(false)
   const [foldersList, setFoldersList] = useState<PlanningFolder[]>([])
   const [targetFolderId, setTargetFolderId] = useState<string>("")
+  const [copiedSchedule, setCopiedSchedule] = useState<{ [key: string]: { lunch_start: string | null; lunch_end: string | null; dinner_start: string | null; dinner_end: string | null } } | null>(null)
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false)
+
+  const copyDaySchedule = (date: string) => {
+    const lunchKey = `${date}_lunch`
+    const dinnerKey = `${date}_dinner`
+    const lunchAssignments = (assignmentsByKey[lunchKey] || [])
+    const dinnerAssignments = (assignmentsByKey[dinnerKey] || [])
+    
+    const schedule: { [key: string]: { lunch_start: string | null; lunch_end: string | null; dinner_start: string | null; dinner_end: string | null } } = {}
+    
+    lunchAssignments.forEach(a => {
+      schedule[a.employee_id] = {
+        ...schedule[a.employee_id],
+        lunch_start: a.work_start,
+        lunch_end: a.work_end,
+      }
+    })
+    
+    dinnerAssignments.forEach(a => {
+      schedule[a.employee_id] = {
+        ...schedule[a.employee_id],
+        dinner_start: a.work_start,
+        dinner_end: a.work_end,
+      }
+    })
+    
+    setCopiedSchedule(schedule)
+  }
+
+  const exportToExcel = () => {
+    // Créer le workbook
+    const wb = XLSX.utils.book_new()
+    
+    // Préparer les données pour le tableau principal
+    const mainData: any[] = []
+    
+    // En-têtes
+    const headers = ['Salarié', 'Rôle', ...weekDays, 'Total semaine']
+    mainData.push(headers)
+    
+    // Données des salariés
+    employeesSorted.forEach(emp => {
+      const row = [emp.first_name, emp.role]
+      
+      weekDays.forEach((day, idx) => {
+        const date = weekDates[idx]
+        const lunchKey = `${date}_lunch`
+        const dinnerKey = `${date}_dinner`
+        const lunchAssignments = (assignmentsByKey[lunchKey] || []).filter(a => a.employee_id === emp.id)
+        const dinnerAssignments = (assignmentsByKey[dinnerKey] || []).filter(a => a.employee_id === emp.id)
+        
+        let cellText = ''
+        
+        lunchAssignments.forEach(a => {
+          const m = mergedAssignment(a)
+          if (m.work_start && m.work_end) {
+            cellText += `Midi : ${m.work_start} - ${m.work_end}\n`
+          }
+        })
+        
+        dinnerAssignments.forEach(a => {
+          const m = mergedAssignment(a)
+          if (m.work_start && m.work_end) {
+            cellText += `Soir : ${m.work_start} - ${m.work_end}\n`
+          }
+        })
+        
+        if (!cellText) {
+          cellText = 'Repos'
+        } else {
+          // Enlever le dernier \n
+          cellText = cellText.trim()
+        }
+        
+        row.push(cellText)
+      })
+      
+      // Total
+      const totalMinutes = weeklyRecap.find(r => r.employee.id === emp.id)?.minutes || 0
+      row.push(minutesToHoursMinutes(totalMinutes))
+      
+      mainData.push(row)
+    })
+    
+    // Créer la feuille principale
+    const wsMain = XLSX.utils.aoa_to_sheet(mainData)
+    
+    // Style de la feuille principale
+    const range = XLSX.utils.decode_range(wsMain['!ref'] || 'A1')
+    
+    // Largeur des colonnes (en unités Excel, ~7 pixels par unité)
+    const colWidths = [
+      { wch: 15 }, // Salarié
+      { wch: 10 }, // Rôle
+      ...weekDays.map(() => ({ wch: 36 })), // Jours (250px ≈ 36 unités Excel)
+      { wch: 12 }  // Total
+    ]
+    wsMain['!cols'] = colWidths
+    
+    // Hauteur des lignes (en points, 1 point ≈ 1.33 pixels)
+    const rowHeights: any[] = []
+    for (let row = 0; row <= employeesSorted.length; row++) {
+      rowHeights[row] = { hpt: 40 } // 54px ≈ 40 points
+    }
+    wsMain['!rows'] = rowHeights
+    
+    // Style pour les en-têtes
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+      if (!wsMain[cellAddress]) wsMain[cellAddress] = {}
+      wsMain[cellAddress].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "4F46E5" } },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true }
+      }
+    }
+    
+    // Style pour les noms de salariés
+    for (let row = 1; row <= range.e.r; row++) {
+      // Nom du salarié (colonne A)
+      const nameCellAddress = XLSX.utils.encode_cell({ r: row, c: 0 })
+      if (!wsMain[nameCellAddress]) wsMain[nameCellAddress] = {}
+      wsMain[nameCellAddress].s = {
+        font: { bold: true },
+        fill: { fgColor: { rgb: "F3F4F6" } },
+        alignment: { horizontal: "left", vertical: "center" }
+      }
+      
+      // Rôle (colonne B)
+      const roleCellAddress = XLSX.utils.encode_cell({ r: row, c: 1 })
+      if (!wsMain[roleCellAddress]) wsMain[roleCellAddress] = {}
+      wsMain[roleCellAddress].s = {
+        alignment: { horizontal: "center", vertical: "center" }
+      }
+      
+      // Colonnes de jours (C à I) - FORCER wrapText pour toutes les cellules
+      for (let col = 2; col <= range.e.c - 1; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+        if (!wsMain[cellAddress]) wsMain[cellAddress] = {}
+        
+        // Appliquer wrapText même si la cellule est vide ou contient "Repos"
+        wsMain[cellAddress].s = {
+          alignment: { horizontal: "center", vertical: "center", wrapText: true }
+        }
+      }
+      
+      // Total (dernière colonne)
+      const totalCellAddress = XLSX.utils.encode_cell({ r: row, c: range.e.c })
+      if (!wsMain[totalCellAddress]) wsMain[totalCellAddress] = {}
+      wsMain[totalCellAddress].s = {
+        font: { bold: true },
+        alignment: { horizontal: "center", vertical: "center" }
+      }
+    }
+    
+    // Ajouter la feuille principale
+    XLSX.utils.book_append_sheet(wb, wsMain, 'Planning Hebdomadaire')
+    
+    // Créer une feuille de résumé
+    const summaryData = [
+      ['Informations du Planning'],
+      [],
+      ['Dossier', folder?.name || ''],
+      ['Planning', planning?.title || ''],
+      ['Période', `${planning?.week_start || ''} au ${planning?.week_end || ''}`],
+      ['Statut', planning?.status === 'validated' ? 'Validé' : 'Brouillon'],
+      [],
+      ['Récapitulatif des Heures'],
+      ['Salarié', 'Rôle', 'Total heures'],
+      ...weeklyRecap.map(r => [
+        r.employee.first_name,
+        r.employee.role,
+        minutesToHoursMinutes(r.minutes)
+      ])
+    ]
+    
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData)
+    wsSummary['!cols'] = [
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 15 }
+    ]
+    
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Résumé')
+    
+    // Générer le nom du fichier
+    const fileName = `Planning_${planning?.title || 'sans-titre'}_${new Date().toISOString().split('T')[0]}.xlsx`
+    
+    // Télécharger le fichier
+    XLSX.writeFile(wb, fileName)
+  }
+
+  const pasteDaySchedule = (targetDate: string) => {
+    if (!copiedSchedule) return
+    
+    employees.forEach(emp => {
+      const schedule = copiedSchedule[emp.id]
+      if (!schedule) return
+      
+      if (schedule.lunch_start && schedule.lunch_end) {
+        addAssignment(targetDate, "lunch", emp.id).then(() => {
+          setTimeout(() => {
+            const newAssignments = assignments.filter(a => 
+              a.date === targetDate && 
+              a.service === "lunch" && 
+              a.employee_id === emp.id
+            )
+            if (newAssignments.length > 0) {
+              updateEdit(newAssignments[0].id, "work_start", schedule.lunch_start!)
+              updateEdit(newAssignments[0].id, "work_end", schedule.lunch_end!)
+              saveAssignment(newAssignments[0].id)
+            }
+          }, 100)
+        })
+      }
+      
+      if (schedule.dinner_start && schedule.dinner_end) {
+        addAssignment(targetDate, "dinner", emp.id).then(() => {
+          setTimeout(() => {
+            const newAssignments = assignments.filter(a => 
+              a.date === targetDate && 
+              a.service === "dinner" && 
+              a.employee_id === emp.id
+            )
+            if (newAssignments.length > 0) {
+              updateEdit(newAssignments[0].id, "work_start", schedule.dinner_start!)
+              updateEdit(newAssignments[0].id, "work_end", schedule.dinner_end!)
+              saveAssignment(newAssignments[0].id)
+            }
+          }, 100)
+        })
+      }
+    })
+  }
 
   useEffect(() => {
     ;(async () => {
@@ -200,9 +437,27 @@ export default function PlanningWeekPage({ params }: { params: Promise<{ folderI
       totals[emp.id] = 0
     }
 
+    // Grouper les assignments par employee_id, date et service pour éviter les doublons
+    const uniqueAssignments = new Map()
+    
     for (const a of assignments) {
       const m = mergedAssignment(a)
-      totals[m.employee_id] = (totals[m.employee_id] || 0) + durationMinutes(m.work_start, m.work_end)
+      const key = `${m.employee_id}_${a.date}_${a.service}`
+      
+      // Garder seulement la dernière version (avec les edits si présents)
+      uniqueAssignments.set(key, m)
+    }
+
+    for (const [key, assignment] of uniqueAssignments) {
+      // Nettoyer les heures (enlever les secondes si présentes)
+      const cleanStart = assignment.work_start ? assignment.work_start.split(':').slice(0, 2).join(':') : null
+      const cleanEnd = assignment.work_end ? assignment.work_end.split(':').slice(0, 2).join(':') : null
+      
+      const duration = durationMinutes(cleanStart, cleanEnd)
+      
+      if (duration > 0) {
+        totals[assignment.employee_id] = (totals[assignment.employee_id] || 0) + duration
+      }
     }
 
     return employees.map((emp) => ({
@@ -251,7 +506,12 @@ export default function PlanningWeekPage({ params }: { params: Promise<{ folderI
 
     // Mettre à jour localement sans recharger toute la page
     const updatedAssignment = await res.json()
-    setAssignments(prev => prev.map(a => a.id === assignmentId ? updatedAssignment : a))
+    
+    setAssignments(prev => {
+      const newAssignments = prev.map(a => a.id === assignmentId ? updatedAssignment : a)
+      return newAssignments
+    })
+    
     setEdits(prev => {
       const { [assignmentId]: removed, ...rest } = prev
       return rest
@@ -312,18 +572,48 @@ export default function PlanningWeekPage({ params }: { params: Promise<{ folderI
         body: JSON.stringify(payload),
       })
 
-      if (!res.ok) {
+      if (res.ok) {
+        const duplicated = await res.json()
+        alert(`Planning "${duplicated.title}" dupliqué avec succès`)
+        setTargetFolderId("")
+        setShowDuplicateDialog(false)
+      } else {
         alert("Erreur lors de la duplication")
-        return
       }
-
-      const newPlanning = await res.json()
-      router.push(`/admin/planning/${newPlanning.folder_id}/plannings/${newPlanning.id}`)
     } catch (error) {
       console.error("[v0] Error duplicating planning:", error)
       alert("Erreur lors de la duplication")
     } finally {
       setDuplicating(false)
+    }
+  }
+
+  const togglePlanningStatus = async () => {
+    if (!planning || !folderId || !planningId) return
+    
+    const newStatus = planning.status === "validated" ? "draft" : "validated"
+    const confirmMessage = newStatus === "validated" 
+      ? "Voulez-vous valider ce planning ? Les affectations ne pourront plus être modifiées." 
+      : "Voulez-vous repasser ce planning en brouillon ?"
+    
+    if (!confirm(confirmMessage)) return
+
+    try {
+      const response = await fetch(`/api/admin/planning/folders/${folderId}/plannings/${planningId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (response.ok) {
+        const updatedPlanning = await response.json()
+        setPlanning(updatedPlanning)
+      } else {
+        alert("Erreur lors de la modification du statut")
+      }
+    } catch (error) {
+      console.error("Error updating planning status:", error)
+      alert("Erreur lors de la modification du statut")
     }
   }
 
@@ -358,6 +648,20 @@ export default function PlanningWeekPage({ params }: { params: Promise<{ folderI
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              onClick={togglePlanningStatus}
+              variant="outline"
+              className="border-slate-600 text-white hover:bg-slate-700"
+            >
+              {planning.status === "validated" ? "Repasser en brouillon" : "Valider le planning"}
+            </Button>
+            <Button
+              onClick={exportToExcel}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Exporter Excel
+            </Button>
             <Badge
               variant={planning.status === "validated" ? "default" : "secondary"}
               className={planning.status === "validated" ? "bg-green-600" : "bg-slate-600"}
@@ -452,6 +756,25 @@ export default function PlanningWeekPage({ params }: { params: Promise<{ folderI
                               <span>{dinnerOpening || "—"}</span>
                             </div>
                           </div>
+                          <div className="flex gap-1 justify-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => copyDaySchedule(date)}
+                              className="h-6 px-2 text-xs border-slate-600 text-white hover:bg-slate-700"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => pasteDaySchedule(date)}
+                              disabled={!copiedSchedule}
+                              className="h-6 px-2 text-xs border-slate-600 text-white hover:bg-slate-700 disabled:opacity-50"
+                            >
+                              Coller
+                            </Button>
+                          </div>
                         </div>
                       </th>
                     )
@@ -488,16 +811,14 @@ export default function PlanningWeekPage({ params }: { params: Promise<{ folderI
                                 <span className="text-xs text-slate-400 w-8">Midi:</span>
                                 {lunchAssignment ? (
                                   <>
-                                    <Input
-                                      type="time"
+                                    <TimeInput
                                       value={mergedAssignment(lunchAssignment).work_start || ""}
-                                      onChange={(e) => updateEdit(lunchAssignment.id, "work_start", e.target.value)}
+                                      onChange={(value) => updateEdit(lunchAssignment.id, "work_start", value)}
                                       className="bg-slate-600 border-slate-500 text-white text-xs h-6 w-20"
                                     />
-                                    <Input
-                                      type="time"
+                                    <TimeInput
                                       value={mergedAssignment(lunchAssignment).work_end || ""}
-                                      onChange={(e) => updateEdit(lunchAssignment.id, "work_end", e.target.value)}
+                                      onChange={(value) => updateEdit(lunchAssignment.id, "work_end", value)}
                                       className="bg-slate-600 border-slate-500 text-white text-xs h-6 w-20"
                                     />
                                     <Button
@@ -533,16 +854,14 @@ export default function PlanningWeekPage({ params }: { params: Promise<{ folderI
                                 <span className="text-xs text-slate-400 w-8">Soir:</span>
                                 {dinnerAssignment ? (
                                   <>
-                                    <Input
-                                      type="time"
+                                    <TimeInput
                                       value={mergedAssignment(dinnerAssignment).work_start || ""}
-                                      onChange={(e) => updateEdit(dinnerAssignment.id, "work_start", e.target.value)}
+                                      onChange={(value) => updateEdit(dinnerAssignment.id, "work_start", value)}
                                       className="bg-slate-600 border-slate-500 text-white text-xs h-6 w-20"
                                     />
-                                    <Input
-                                      type="time"
+                                    <TimeInput
                                       value={mergedAssignment(dinnerAssignment).work_end || ""}
-                                      onChange={(e) => updateEdit(dinnerAssignment.id, "work_end", e.target.value)}
+                                      onChange={(value) => updateEdit(dinnerAssignment.id, "work_end", value)}
                                       className="bg-slate-600 border-slate-500 text-white text-xs h-6 w-20"
                                     />
                                     <Button

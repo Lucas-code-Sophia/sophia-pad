@@ -79,6 +79,13 @@ export default function PlanningPage() {
               <p className="text-slate-400">Gestion des plannings</p>
             </div>
           </div>
+          <Button
+            onClick={() => router.push("/admin/planning/new")}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Créer un dossier
+          </Button>
         </div>
 
         {folders.length === 0 ? (
