@@ -7,6 +7,24 @@ export interface User {
   created_at: string
 }
 
+export interface Applicant {
+  id: string
+  created_at: string
+  first_name: string
+  last_name: string
+  email: string
+  phone: string
+  position: string
+  start_date: string
+  end_date: string
+  notes: string
+  cv_file_name: string
+  cv_base64: string
+  status: "NEW" | "REVIEWED" | "INTERVIEW_SCHEDULED" | "INTERVIEWED" | "ACCEPTED" | "REJECTED"
+  ai_summary: string | null
+  ai_score: number | null
+}
+
 export interface Table {
   id: string
   table_number: string // Changed to string to support T1, I1, C1 format

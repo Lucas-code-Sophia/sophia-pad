@@ -390,6 +390,28 @@ export default function AdminPage() {
         </Card>
 
         <Card
+          className="bg-slate-800 border-slate-700 hover:border-teal-500 transition-colors cursor-pointer"
+          onClick={() => router.push("/admin/recruitment")}
+        >
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 sm:p-3 bg-teal-600 rounded-lg">
+                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-white text-base sm:text-lg">Recrutement</CardTitle>
+                <CardDescription className="text-slate-400 text-xs sm:text-sm">Gestion des candidatures</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6 pt-0">
+            <p className="text-slate-300 text-xs sm:text-sm">
+              Suivi des candidatures, CV et entretiens
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card
           className="bg-slate-800 border-slate-700 hover:border-green-500 transition-colors cursor-pointer"
           onClick={() => router.push("/admin/tables")}
         >

@@ -392,7 +392,7 @@ export default function OrderPage() {
         
         await fetchData()
         
-        alert(`${getItemsToSendText()} envoyés à la cuisine !`)
+        alert(`${getFollowNumberText()} envoyés à la cuisine !`)
       }
     } catch (error) {
       console.error("[v0] Error firing to follow items:", error)
@@ -412,7 +412,8 @@ export default function OrderPage() {
   const filteredItems = menuItems.filter((item) => item.category_id === selectedCategory)
   const cartTotal =
     cart.reduce((sum, item) => sum + (item.isComplimentary ? 0 : item.menuItem.price * item.quantity), 0) +
-    supplements.reduce((sum, sup) => sum + (sup.isComplimentary ? 0 : sup.amount), 0)
+    supplements.reduce((sum, sup) => sum + (sup.isComplimentary ? 0 : sup.amount), 0) +
+    existingItems.reduce((sum, item) => sum + (item.is_complimentary ? 0 : item.price * item.quantity), 0)
   const toFollowCount = cart.filter((item) => item.status === "to_follow_1" || item.status === "to_follow_2").length
   
   // Compter les plats et boissons à envoyer
@@ -442,6 +443,24 @@ export default function OrderPage() {
     }
     
     return itemsText + supplementsText
+  }
+
+  const getFollowNumberText = () => {
+    const itemsToSend = cart.filter((item) => item.status === "pending")
+    const toFollow1Items = cart.filter((item) => item.status === "to_follow_1")
+    const toFollow2Items = cart.filter((item) => item.status === "to_follow_2")
+    
+    if (itemsToSend.length > 0) {
+      return `${itemsToSend.length} plat${itemsToSend.length > 1 ? 's' : ''}`
+    } else if (toFollow1Items.length > 0 && toFollow2Items.length > 0) {
+      return `${toFollow1Items.length} plat${toFollow1Items.length > 1 ? 's' : ''} à suivre 1 et ${toFollow2Items.length} plat${toFollow2Items.length > 1 ? 's' : ''} à suivre 2`
+    } else if (toFollow1Items.length > 0) {
+      return `${toFollow1Items.length} plat${toFollow1Items.length > 1 ? 's' : ''} à suivre 1`
+    } else if (toFollow2Items.length > 0) {
+      return `${toFollow2Items.length} plat${toFollow2Items.length > 1 ? 's' : ''} à suivre 2`
+    }
+    
+    return ""
   }
 
   // Vérifier s'il reste des plats non envoyés avant d'aller à l'addition
@@ -774,6 +793,20 @@ export default function OrderPage() {
                 <span className="text-base sm:text-lg font-semibold">Total</span>
                 <span className="text-xl sm:text-2xl font-bold text-blue-400">{cartTotal.toFixed(2)} €</span>
               </div>
+              {/* Afficher le détail du total si des plats sont en attente */}
+              {(cart.length > 0 || existingItems.length > 0) && (
+                <div className="mt-2 text-xs text-slate-400">
+                  {existingItems.length > 0 && (
+                    <div>Déjà commandé: {existingItems.reduce((sum, item) => sum + (item.is_complimentary ? 0 : item.price * item.quantity), 0).toFixed(2)} €</div>
+                  )}
+                  {cart.length > 0 && (
+                    <div>Plats en attente: {cart.reduce((sum, item) => sum + (item.isComplimentary ? 0 : item.menuItem.price * item.quantity), 0).toFixed(2)} €</div>
+                  )}
+                  {supplements.length > 0 && (
+                    <div>Suppléments: {supplements.reduce((sum, sup) => sum + (sup.isComplimentary ? 0 : sup.amount), 0).toFixed(2)} €</div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Send Button */}
