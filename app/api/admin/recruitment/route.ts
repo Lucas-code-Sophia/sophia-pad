@@ -88,15 +88,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Convert CV to base64 if provided
-    let cv_base64 = ""
     let cv_file_name = ""
+    let cv_file_path = ""
     
+    // Upload CV to Supabase Storage si fourni
     if (cv_file) {
-      const bytes = await cv_file.arrayBuffer()
-      const buffer = Buffer.from(bytes)
-      cv_base64 = buffer.toString("base64")
+      const fileName = `${Date.now()}-${cv_file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('cv')
+        .upload(fileName, cv_file)
+
+      if (uploadError) {
+        console.error("[v0] Error uploading CV:", uploadError)
+        return NextResponse.json({ error: "Failed to upload CV", details: uploadError }, { status: 500 })
+      }
+
       cv_file_name = cv_file.name
+      cv_file_path = fileName
     }
 
     // Create candidate record
@@ -110,7 +118,7 @@ export async function POST(request: NextRequest) {
       end_date: end_date || null,
       notes: notes || "",
       cv_file_name,
-      cv_base64,
+      cv_file_path,
       status: "NEW" as const,
       ai_summary: null,
       ai_score: null,
@@ -124,6 +132,10 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("[v0] Error creating candidate:", error)
+      // Si l'insertion échoue, supprimer le fichier uploadé
+      if (cv_file_path) {
+        await supabase.storage.from('cv').remove([cv_file_path])
+      }
       return NextResponse.json({ error: "Failed to create candidate", details: error }, { status: 500 })
     }
 

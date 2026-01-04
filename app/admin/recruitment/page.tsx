@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import type { Applicant } from "@/lib/types"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +15,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -28,23 +30,18 @@ import {
 import {
   ArrowLeft,
   Users,
-  UserPlus,
-  Download,
-  Upload,
-  FileText,
+  Plus,
+  Search,
+  Filter,
   Calendar,
   Mail,
   Phone,
-  Star,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
+  FileText,
   Eye,
   Edit,
   Trash2,
-  Filter,
-  Search,
+  Download,
+  RefreshCw,
   Brain,
   TrendingUp,
   Briefcase,
@@ -179,14 +176,25 @@ export default function RecruitmentPage() {
     }
   }
 
-  const downloadCV = (applicant: Applicant) => {
-    if (applicant.cv_base64 && applicant.cv_file_name) {
-      const link = document.createElement("a")
-      link.href = `data:application/octet-stream;base64,${applicant.cv_base64}`
-      link.download = applicant.cv_file_name
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+  const downloadCV = async (applicant: Applicant) => {
+    if (applicant.cv_file_path && applicant.cv_file_name) {
+      try {
+        console.log("[v0] Opening CV URL:", applicant.cv_file_path)
+        
+        // cv_file_path contient déjà l'URL complète, l'utiliser directement
+        const fileUrl = applicant.cv_file_path
+        
+        console.log("[v0] File URL:", fileUrl)
+        
+        // Ouvrir directement dans un nouvel onglet
+        window.open(fileUrl, '_blank')
+        
+      } catch (error) {
+        console.error("[v0] Error opening CV:", error)
+        alert("Erreur lors de l'ouverture du CV")
+      }
+    } else {
+      alert("Aucun CV disponible pour ce candidat")
     }
   }
 
@@ -262,13 +270,23 @@ export default function RecruitmentPage() {
             <p className="text-slate-400 text-xs sm:text-sm mt-1">Gestion des candidatures et CV</p>
           </div>
         </div>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-teal-600 hover:bg-teal-700">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Ajouter une candidature
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <Button 
+            onClick={fetchCandidates} 
+            variant="outline" 
+            className="bg-slate-700 hover:bg-slate-600 border-slate-600"
+            title="Recharger la liste"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Recharger
+          </Button>
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button className="bg-teal-600 hover:bg-teal-700">
+                <Plus className="h-4 w-4 mr-2" />
+                Ajouter une candidature
+              </Button>
+            </DialogTrigger>
           <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-2xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Nouvelle candidature</DialogTitle>
@@ -367,6 +385,7 @@ export default function RecruitmentPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -528,7 +547,7 @@ export default function RecruitmentPage() {
                             </div>
                           )}
                           <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-slate-500" />
+                            <Calendar className="h-4 w-4 text-slate-500" />
                             <span>Candidature: {new Date(candidate.created_at).toLocaleDateString('fr-FR')}</span>
                           </div>
                         </div>
@@ -558,7 +577,7 @@ export default function RecruitmentPage() {
                       <Eye className="h-3 w-3 mr-1" />
                       Voir
                     </Button>
-                    {candidate.cv_base64 && (
+                    {candidate.cv_file_path && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -692,7 +711,7 @@ export default function RecruitmentPage() {
                 </div>
               )}
 
-              {selectedCandidate.cv_base64 && (
+              {selectedCandidate.cv_file_path && (
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                     <FileText className="h-5 w-5 text-blue-400" />
@@ -775,7 +794,7 @@ export default function RecruitmentPage() {
             </div>
           )}
         </DialogContent>
-      </Dialog>
-    </div>
+        </Dialog>
+      </div>
   )
 }

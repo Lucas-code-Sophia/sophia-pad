@@ -52,6 +52,19 @@ export async function DELETE(
     const adminClient = getAdminClient()
     const supabase = adminClient || await createClient()
 
+    // Récupérer d'abord les infos du candidat pour supprimer le CV si nécessaire
+    const { data: candidate, error: fetchError } = await supabase
+      .from("applicants")
+      .select("cv_file_path")
+      .eq("id", params.id)
+      .single()
+
+    if (fetchError) {
+      console.error("[v0] Error fetching candidate for deletion:", fetchError)
+      return NextResponse.json({ error: "Failed to fetch candidate", details: fetchError }, { status: 500 })
+    }
+
+    // Supprimer le candidat de la base de données
     const { error } = await supabase
       .from("applicants")
       .delete()
@@ -60,6 +73,18 @@ export async function DELETE(
     if (error) {
       console.error("[v0] Error deleting candidate:", error)
       return NextResponse.json({ error: "Failed to delete candidate", details: error }, { status: 500 })
+    }
+
+    // Supprimer le fichier CV du storage s'il existe
+    if (candidate?.cv_file_path) {
+      const { error: storageError } = await supabase.storage
+        .from('cv')
+        .remove([candidate.cv_file_path])
+      
+      if (storageError) {
+        console.error("[v0] Error deleting CV from storage:", storageError)
+        // Ne pas échouer la suppression si le fichier n'existe pas
+      }
     }
 
     return NextResponse.json({ success: true })

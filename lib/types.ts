@@ -19,7 +19,7 @@ export interface Applicant {
   end_date: string
   notes: string
   cv_file_name: string
-  cv_base64: string
+  cv_file_path: string  // Chemin dans Supabase Storage
   status: "NEW" | "REVIEWED" | "INTERVIEW_SCHEDULED" | "INTERVIEWED" | "ACCEPTED" | "REJECTED"
   ai_summary: string | null
   ai_score: number | null

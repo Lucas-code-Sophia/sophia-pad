@@ -1,5 +1,5 @@
 -- Create candidates table for recruitment management
-CREATE TABLE IF NOT EXISTS candidates (
+CREATE TABLE IF NOT EXISTS applicants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     first_name TEXT NOT NULL,
@@ -11,23 +11,23 @@ CREATE TABLE IF NOT EXISTS candidates (
     end_date DATE,
     notes TEXT DEFAULT '',
     cv_file_name TEXT DEFAULT '',
-    cv_base64 TEXT DEFAULT '',
+    cv_file_path TEXT DEFAULT '',  -- Chemin dans Supabase Storage
     status TEXT NOT NULL DEFAULT 'NEW' CHECK (status IN ('NEW', 'REVIEWED', 'INTERVIEW_SCHEDULED', 'INTERVIEWED', 'ACCEPTED', 'REJECTED')),
     ai_summary TEXT,
     ai_score INTEGER CHECK (ai_score >= 0 AND ai_score <= 100)
 );
 
 -- Add indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_candidates_status ON candidates(status);
-CREATE INDEX IF NOT EXISTS idx_candidates_position ON candidates(position);
-CREATE INDEX IF NOT EXISTS idx_candidates_created_at ON candidates(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_candidates_email ON candidates(email);
+CREATE INDEX IF NOT EXISTS idx_applicants_status ON applicants(status);
+CREATE INDEX IF NOT EXISTS idx_applicants_position ON applicants(position);
+CREATE INDEX IF NOT EXISTS idx_applicants_created_at ON applicants(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_applicants_email ON applicants(email);
 
 -- Add RLS policies
-ALTER TABLE candidates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE applicants ENABLE ROW LEVEL SECURITY;
 
--- Policy: Only managers can access candidates
-CREATE POLICY "Only managers can access candidates" ON candidates
+-- Policy: Only managers can access applicants
+CREATE POLICY "Only managers can access applicants" ON applicants
     FOR ALL USING (
         EXISTS (
             SELECT 1 FROM auth.users 
@@ -36,8 +36,8 @@ CREATE POLICY "Only managers can access candidates" ON candidates
         )
     );
 
--- Policy: Only managers can insert candidates
-CREATE POLICY "Only managers can insert candidates" ON candidates
+-- Policy: Only managers can insert applicants
+CREATE POLICY "Only managers can insert applicants" ON applicants
     FOR INSERT WITH CHECK (
         EXISTS (
             SELECT 1 FROM auth.users 
@@ -46,8 +46,8 @@ CREATE POLICY "Only managers can insert candidates" ON candidates
         )
     );
 
--- Policy: Only managers can update candidates
-CREATE POLICY "Only managers can update candidates" ON candidates
+-- Policy: Only managers can update applicants
+CREATE POLICY "Only managers can update applicants" ON applicants
     FOR UPDATE USING (
         EXISTS (
             SELECT 1 FROM auth.users 
@@ -56,8 +56,8 @@ CREATE POLICY "Only managers can update candidates" ON candidates
         )
     );
 
--- Policy: Only managers can delete candidates
-CREATE POLICY "Only managers can delete candidates" ON candidates
+-- Policy: Only managers can delete applicants
+CREATE POLICY "Only managers can delete applicants" ON applicants
     FOR DELETE USING (
         EXISTS (
             SELECT 1 FROM auth.users 
