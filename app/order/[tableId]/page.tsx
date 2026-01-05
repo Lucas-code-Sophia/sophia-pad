@@ -110,15 +110,39 @@ export default function OrderPage() {
       if (itemsRes.ok) {
         const itemsData = await itemsRes.json()
         setMenuItems(itemsData)
-      }
-
-      // Fetch current order if table is occupied
-      const orderRes = await fetch(`/api/orders/table/${tableId}`)
-      if (orderRes.ok) {
-        const orderData = await orderRes.json()
-        if (orderData) {
-          setCurrentOrder(orderData.order)
-          setExistingItems(orderData.items)
+        
+        // Fetch current order after menu items are loaded
+        const orderRes = await fetch(`/api/orders/table/${tableId}`)
+        if (orderRes.ok) {
+          const orderData = await orderRes.json()
+          if (orderData) {
+            setCurrentOrder(orderData.order)
+            
+            // Separate items: fired/completed go to existingItems, to_follow go to cart
+            const existingItemsData = orderData.items.filter((item: OrderItem) => 
+              item.status === "fired" || item.status === "completed"
+            )
+            const toFollowItems = orderData.items.filter((item: OrderItem) => 
+              item.status === "to_follow_1" || item.status === "to_follow_2"
+            )
+            
+            setExistingItems(existingItemsData)
+            
+            // Convert to_follow items to cart format
+            const toFollowCartItems = toFollowItems.map((item: OrderItem) => {
+              const menuItem = itemsData.find((m: MenuItem) => m.id === item.menu_item_id)
+              return menuItem ? {
+                menuItem,
+                quantity: item.quantity,
+                status: item.status as "to_follow_1" | "to_follow_2",
+                notes: item.notes,
+                isComplimentary: item.is_complimentary,
+                complimentaryReason: item.complimentary_reason,
+              } : null
+            }).filter(Boolean) as CartItem[]
+            
+            setCart(toFollowCartItems)
+          }
         }
       }
     } catch (error) {
@@ -156,21 +180,77 @@ export default function OrderPage() {
     })
   }
 
-  const toggleToFollow = (menuItemId: string) => {
+  const toggleToFollow = async (menuItemId: string) => {
+    const item = cart.find((i) => i.menuItem.id === menuItemId)
+    if (!item) return
+
+    const newStatus = item.status === "pending" 
+      ? "to_follow_1" 
+      : item.status === "to_follow_1" 
+        ? "to_follow_2" 
+        : "pending"
+
+    // Update local state immediately for responsiveness
     setCart((prev) =>
-      prev.map((item) =>
-        item.menuItem.id === menuItemId
-          ? { 
-              ...item, 
-              status: item.status === "pending" 
-                ? "to_follow_1" 
-                : item.status === "to_follow_1" 
-                  ? "to_follow_2" 
-                  : "pending" 
-            }
-          : item,
+      prev.map((cartItem) =>
+        cartItem.menuItem.id === menuItemId
+          ? { ...cartItem, status: newStatus }
+          : cartItem,
       ),
     )
+
+    // If changing to a to_follow status, save to database
+    if (newStatus === "to_follow_1" || newStatus === "to_follow_2") {
+      try {
+        const response = await fetch("/api/orders/to-follow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tableId,
+            serverId: user?.id || "",
+            items: [{
+              menuItemId: item.menuItem.id,
+              quantity: item.quantity,
+              price: item.menuItem.price,
+              status: newStatus,
+              notes: item.notes,
+              isComplimentary: item.isComplimentary || false,
+              complimentaryReason: item.complimentaryReason,
+            }],
+            orderId: currentOrder?.id,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to save to_follow item")
+        }
+
+        const result = await response.json()
+        if (!currentOrder) {
+          setCurrentOrder({ 
+            id: result.orderId,
+            table_id: tableId,
+            server_id: user?.id || "",
+            status: "open",
+            created_at: new Date().toISOString()
+          })
+        }
+
+        // Refresh data to get the saved item
+        fetchData()
+      } catch (error) {
+        console.error("[v0] Error saving to_follow item:", error)
+        // Revert the change if save failed
+        setCart((prev) =>
+          prev.map((cartItem) =>
+            cartItem.menuItem.id === menuItemId
+              ? { ...cartItem, status: item.status }
+              : cartItem,
+          ),
+        )
+        alert("Erreur lors de la sauvegarde du 'à suivre'")
+      }
+    }
   }
 
   const openNotesDialog = (menuItemId: string) => {
