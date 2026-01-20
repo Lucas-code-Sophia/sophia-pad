@@ -117,11 +117,23 @@ export default function FloorPlanPage() {
       fetchTables()
       fetchReservationsForToday()
       // Refresh periodically
-      const interval = setInterval(fetchTables, 10000)
+      const interval = setInterval(fetchTables, 5000) // Augmenté à 5 secondes
       const rInterval = setInterval(fetchReservationsForToday, 15000)
+      
+      // Rafraîchir quand la page redevient visible (retour d'une autre page)
+      const handleVisibilityChange = () => {
+        if (!document.hidden) {
+          fetchTables()
+          fetchReservationsForToday()
+        }
+      }
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+      
       return () => {
         clearInterval(interval)
         clearInterval(rInterval)
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
       }
     }
   }, [user])
@@ -183,9 +195,9 @@ export default function FloorPlanPage() {
   }
 
   const getTableStatus = (table: Table): "available" | "occupied" | "reserved" => {
-    if (table.status === "occupied") return "occupied"
-    const hasToday = (reservationsByTable[table.id] || []).length > 0
-    return hasToday ? "reserved" : "available"
+    const status = table.status === "occupied" ? "occupied" : 
+                  (reservationsByTable[table.id] || []).length > 0 ? "reserved" : "available"
+    return status
   }
 
   const handleTableClick = async (table: Table) => {
@@ -451,6 +463,40 @@ export default function FloorPlanPage() {
   )
   const canapeeTables = sortTablesByNumber(tables.filter((t) => t.location === "C"))
   const interiorTables = sortTablesByNumber(tables.filter((t) => t.location === "I"))
+  
+  // Tables du serveur connecté
+  const myTables = sortTablesByNumber(
+    tables.filter((t) => t.opened_by === user?.id && t.status === "occupied")
+  )
+
+  // Fonction pour afficher le nom du serveur qui a ouvert la table
+  const getServerName = (table: Table) => {
+    if (table.opened_by_name) {
+      return table.opened_by_name
+    }
+    return ""
+  }
+
+  // Composant pour afficher une table avec le nom du serveur
+  const TableButton = ({ table, aspectRatio = true }: { table: Table; aspectRatio?: boolean }) => (
+    <button
+      key={table.id}
+      onClick={() => handleTableClick(table)}
+      className={`${aspectRatio ? 'aspect-square' : 'h-20 sm:h-24'} rounded-lg border-2 transition-all ${getStatusColor(getTableStatus(table))} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl relative`}
+    >
+      <div className="flex flex-col items-center leading-tight text-center">
+        <div>{table.table_number}</div>
+        {getTodaySummary(table.id) && (
+          <div className="text-[10px] sm:text-xs opacity-90 mt-0.5 text-white/90 px-1">{getTodaySummary(table.id)}</div>
+        )}
+      </div>
+      {table.status === "occupied" && getServerName(table) && (
+        <div className="absolute top-1 right-1 text-[8px] sm:text-[10px] bg-black/50 px-1 py-0.5 rounded text-white/90">
+          {getServerName(table)}
+        </div>
+      )}
+    </button>
+  )
 
   return (
     <div className="min-h-screen bg-slate-900 p-2 sm:p-4">
@@ -654,23 +700,24 @@ export default function FloorPlanPage() {
 
       {/* Floor Plan */}
       <div className="space-y-4 sm:space-y-6">
+        {/* Mes Tables - Section pour le serveur connecté */}
+        {myTables.length > 0 && (
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">Mes tables</h2>
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
+              {myTables.map((table) => (
+                <TableButton key={table.id} table={table} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Terrace Section - Top rows */}
         <div>
           <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">Terrasse</h2>
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
             {terraceTablesTop.slice(0, 24).map((table) => (
-              <button
-                key={table.id}
-                onClick={() => handleTableClick(table)}
-                className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(getTableStatus(table))} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
-              >
-                <div className="flex flex-col items-center leading-tight text-center">
-                  <div>{table.table_number}</div>
-                  {getTodaySummary(table.id) && (
-                    <div className="text-[10px] sm:text-xs opacity-90 mt-0.5 text-white/90 px-1">{getTodaySummary(table.id)}</div>
-                  )}
-                </div>
-              </button>
+              <TableButton key={table.id} table={table} />
             ))}
           </div>
         </div>
@@ -682,18 +729,7 @@ export default function FloorPlanPage() {
             <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">Canapé</h2>
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {canapeeTables.map((table) => (
-                <button
-                  key={table.id}
-                  onClick={() => handleTableClick(table)}
-                  className={`h-20 sm:h-24 rounded-lg border-2 transition-all ${getStatusColor(getTableStatus(table))} text-white font-semibold shadow-lg flex items-center justify-center text-base sm:text-xl`}
-                >
-                  <div className="flex flex-col items-center leading-tight text-center">
-                    <div>{table.table_number}</div>
-                    {getTodaySummary(table.id) && (
-                      <div className="text-[10px] sm:text-xs opacity-90 mt-0.5 text-white/90 px-1">{getTodaySummary(table.id)}</div>
-                    )}
-                  </div>
-                </button>
+                <TableButton key={table.id} table={table} aspectRatio={false} />
               ))}
             </div>
           </div>
@@ -703,18 +739,7 @@ export default function FloorPlanPage() {
             <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3 sm:invisible">Terrasse (suite)</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               {terraceTablesMiddle.map((table) => (
-                <button
-                  key={table.id}
-                  onClick={() => handleTableClick(table)}
-                  className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(getTableStatus(table))} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
-                >
-                  <div className="flex flex-col items-center leading-tight text-center">
-                    <div>{table.table_number}</div>
-                    {getTodaySummary(table.id) && (
-                      <div className="text-[10px] sm:text-xs opacity-90 mt-0.5 text-white/90 px-1">{getTodaySummary(table.id)}</div>
-                    )}
-                  </div>
-                </button>
+                <TableButton key={table.id} table={table} />
               ))}
             </div>
           </div>
@@ -725,18 +750,7 @@ export default function FloorPlanPage() {
           <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">Intérieur</h2>
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
             {interiorTables.map((table) => (
-              <button
-                key={table.id}
-                onClick={() => handleTableClick(table)}
-                className={`aspect-square rounded-lg border-2 transition-all ${getStatusColor(getTableStatus(table))} text-white font-semibold shadow-lg flex items-center justify-center text-sm sm:text-xl`}
-              >
-                <div className="flex flex-col items-center leading-tight text-center">
-                  <div>{table.table_number}</div>
-                  {getTodaySummary(table.id) && (
-                    <div className="text-[10px] sm:text-xs opacity-90 mt-0.5 text-white/90 px-1">{getTodaySummary(table.id)}</div>
-                  )}
-                </div>
-              </button>
+              <TableButton key={table.id} table={table} />
             ))}
           </div>
         </div>

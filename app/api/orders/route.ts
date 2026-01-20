@@ -27,67 +27,72 @@ export async function POST(request: NextRequest) {
 
       currentOrderId = newOrder.id
 
-      // Update table status to occupied
-      await supabase.from("tables").update({ status: "occupied" }).eq("id", tableId)
+      // Update table status to occupied and record who opened it
+      const { data: server } = await supabase.from("users").select("name").eq("id", serverId).single()
+      await supabase.from("tables").update({ 
+        status: "occupied",
+        opened_by: serverId,
+        opened_by_name: server?.name || null
+      }).eq("id", tableId)
     }
 
-    // Supprimer d'abord les articles "à suivre" qui ne sont plus dans le panier
-    const currentFollowItems = await supabase
-      .from("order_items")
-      .select("cart_item_id")
-      .eq("order_id", currentOrderId)
-      .in("status", ["to_follow_1", "to_follow_2"])
+    // Gérer les articles existants et nouveaux séparément
+    const existingItems = items.filter((item: any) => !item.cartItemId.startsWith('temp-'))
+    const newItems = items.filter((item: any) => item.cartItemId.startsWith('temp-'))
 
-    if (currentFollowItems.data) {
-      const currentFollowIds = currentFollowItems.data.map((item: any) => item.cart_item_id)
-      const newFollowIds = items
-        .filter((item: any) => item.status === "to_follow_1" || item.status === "to_follow_2")
-        .map((item: any) => item.cartItemId)
-
-      // Supprimer les articles "à suivre" qui ne sont plus dans le panier
-      const idsToDelete = currentFollowIds.filter(id => !newFollowIds.includes(id))
-      if (idsToDelete.length > 0) {
-        await supabase
-          .from("order_items")
-          .delete()
-          .eq("order_id", currentOrderId)
-          .in("cart_item_id", idsToDelete)
-          .in("status", ["to_follow_1", "to_follow_2"])
-        
-        console.log("[v0] Deleted follow items:", idsToDelete)
-      }
-    }
-
-    // Supprimer les articles existants avec les mêmes cart_item_id pour éviter les doublons
-    const existingItemIds = items.map((item: any) => item.cartItemId)
-    if (existingItemIds.length > 0) {
-      await supabase
+    // Mettre à jour les articles existants
+    const updatePromises = existingItems.map(async (item: any) => {
+      const { data, error } = await supabase
         .from("order_items")
-        .delete()
+        .update({
+          menu_item_id: item.menuItemId,
+          quantity: item.quantity,
+          price: item.price,
+          status: item.status,
+          notes: item.notes,
+          fired_at: item.status === "fired" ? new Date().toISOString() : null,
+          is_complimentary: item.isComplimentary || false,
+          complimentary_reason: item.complimentaryReason,
+        })
         .eq("order_id", currentOrderId)
-        .in("cart_item_id", existingItemIds)
-    }
+        .eq("id", item.cartItemId)
 
-    // Insert order items
-    const orderItems = items.map((item: any) => ({
-      order_id: currentOrderId,
-      menu_item_id: item.menuItemId,
-      cart_item_id: item.cartItemId, // ← NOUVEAU
-      quantity: item.quantity,
-      price: item.price,
-      status: item.status,
-      notes: item.notes,
-      fired_at: item.status === "fired" ? new Date().toISOString() : null,
-      is_complimentary: item.isComplimentary || false,
-      complimentary_reason: item.complimentaryReason,
-    }))
+      if (error) {
+        console.error("[v0] Error updating item:", error)
+        throw error
+      }
 
-    const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
+      return data
+    })
 
-    if (itemsError) {
-      console.error("[v0] Error inserting order items:", itemsError)
-      return NextResponse.json({ error: "Failed to insert order items" }, { status: 500 })
-    }
+    // Insérer les nouveaux articles
+    const insertPromises = newItems.map(async (item: any) => {
+      const { data, error } = await supabase
+        .from("order_items")
+        .insert({
+          order_id: currentOrderId,
+          menu_item_id: item.menuItemId,
+          cart_item_id: item.cartItemId,
+          quantity: item.quantity,
+          price: item.price,
+          status: item.status,
+          notes: item.notes,
+          fired_at: item.status === "fired" ? new Date().toISOString() : null,
+          is_complimentary: item.isComplimentary || false,
+          complimentary_reason: item.complimentaryReason,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error("[v0] Error inserting new item:", error)
+        throw error
+      }
+
+      return data
+    })
+
+    await Promise.all([...updatePromises, ...insertPromises])
 
     if (supplements && supplements.length > 0) {
       const supplementRecords = supplements.map((sup: any) => ({

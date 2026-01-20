@@ -33,6 +33,8 @@ export interface Table {
   position_y: number
   status: "available" | "occupied" | "reserved"
   location: "T" | "I" | "C" // T=Terrace, I=Interior, C=Canapé
+  opened_by?: string // UUID du serveur qui a ouvert la table
+  opened_by_name?: string // Nom du serveur qui a ouvert la table
   created_at: string
 }
 
@@ -104,6 +106,7 @@ export interface OrderItem {
   notes?: string
   is_complimentary: boolean
   complimentary_reason?: string
+  created_by_server_id?: string // UUID du serveur qui a ajouté cet article
   created_at: string
   fired_at?: string
 }
@@ -181,6 +184,8 @@ export interface DailySalesRecord {
   server_id: string
   server_name: string
   total_amount: number
+  complimentary_amount: number // Montant total des articles offerts
+  complimentary_count: number  // Nombre d'articles offerts
   payment_method: string
   created_at: string
 }

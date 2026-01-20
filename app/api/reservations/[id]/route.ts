@@ -59,7 +59,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // If cancelling or completing, update table status
     if (body.status === "cancelled" || body.status === "completed") {
       if (reservation) {
-        await supabase.from("tables").update({ status: "available" }).eq("id", reservation.table_id)
+        await supabase.from("tables").update({ status: "available", opened_by: null, opened_by_name: null }).eq("id", reservation.table_id)
       }
     } else if (body.status === "seated") {
       if (reservation) {
@@ -88,7 +88,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     // Update table status to available
     if (reservation) {
-      await supabase.from("tables").update({ status: "available" }).eq("id", reservation.table_id)
+      await supabase.from("tables").update({ status: "available", opened_by: null, opened_by_name: null }).eq("id", reservation.table_id)
     }
 
     const { error } = await supabase.from("reservations").delete().eq("id", id)

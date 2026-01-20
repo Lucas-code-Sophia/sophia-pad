@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
     if (splitMode === "items" && itemQuantities) {
       const paymentItems = []
       for (const [orderItemId, quantity] of Object.entries(itemQuantities)) {
-        if (quantity > 0) {
+        const quantityNum = Number(quantity) // Conversion explicite en nombre
+        if (quantityNum > 0) {
           // Get the item price
           const { data: orderItem } = await supabase.from("order_items").select("price").eq("id", orderItemId).single()
 
@@ -33,8 +34,8 @@ export async function POST(request: NextRequest) {
             paymentItems.push({
               payment_id: paymentData.id,
               order_item_id: orderItemId,
-              quantity: Number(quantity),
-              amount: orderItem.price * Number(quantity),
+              quantity: quantityNum,
+              amount: orderItem.price * quantityNum,
             })
           }
         }
@@ -48,17 +49,26 @@ export async function POST(request: NextRequest) {
     // Get total payments for this order
     const { data: payments } = await supabase.from("payments").select("amount").eq("order_id", orderId)
 
-    // Get order total
-    const { data: orderItems } = await supabase.from("order_items").select("price, quantity").eq("order_id", orderId)
-
+    // Get order total and complimentary items
+    const { data: orderItems } = await supabase.from("order_items").select("price, quantity, is_complimentary").eq("order_id", orderId)
     const { data: supplements } = await supabase
       .from("supplements")
       .select("amount, is_complimentary")
       .eq("order_id", orderId)
 
-    const itemsTotal = orderItems?.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0
+    // Calculer les totaux
+    const itemsTotal = orderItems?.reduce((sum, item) => sum + (item.is_complimentary ? 0 : item.price * item.quantity), 0) || 0
     const supplementsTotal = supplements?.reduce((sum, sup) => sum + (sup.is_complimentary ? 0 : sup.amount), 0) || 0
     const orderTotal = itemsTotal + supplementsTotal
+
+    // Calculer les articles offerts
+    const complimentaryItemsTotal = orderItems?.reduce((sum, item) => sum + (item.is_complimentary ? item.price * item.quantity : 0), 0) || 0
+    const complimentarySupplementsTotal = supplements?.reduce((sum, sup) => sum + (sup.is_complimentary ? sup.amount : 0), 0) || 0
+    const complimentaryItemsCount = orderItems?.filter(item => item.is_complimentary).reduce((sum, item) => sum + item.quantity, 0) || 0
+    const complimentarySupplementsCount = supplements?.filter(sup => sup.is_complimentary).length || 0
+    
+    const totalComplimentaryAmount = complimentaryItemsTotal + complimentarySupplementsTotal
+    const totalComplimentaryCount = complimentaryItemsCount + complimentarySupplementsCount
 
     const paidTotal = payments?.reduce((sum, payment) => sum + Number.parseFloat(payment.amount.toString()), 0) || 0
     const remainingAmount = orderTotal - paidTotal
@@ -67,13 +77,16 @@ export async function POST(request: NextRequest) {
 
     if (isFullyPaid) {
       await supabase.from("orders").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", orderId)
-      await supabase.from("tables").update({ status: "available" }).eq("id", tableId)
+      
+      // Récupérer les infos de la table AVANT de la libérer
+      const { data: tableData } = await supabase.from("tables").select("table_number, opened_by, opened_by_name").eq("id", tableId).single()
+      
+      await supabase.from("tables").update({ status: "available", opened_by: null, opened_by_name: null }).eq("id", tableId)
 
       const { data: orderData } = await supabase.from("orders").select("server_id, table_id, created_at").eq("id", orderId).single()
 
-      const { data: serverData } = await supabase.from("users").select("name").eq("id", orderData?.server_id).single()
-
-      const { data: tableData } = await supabase.from("tables").select("table_number").eq("id", tableId).single()
+      // Utiliser le nom de la personne qui a ouvert la table si disponible, sinon le serveur de la commande
+      const { data: serverData } = await supabase.from("users").select("name").eq("id", tableData?.opened_by || orderData?.server_id).single()
 
       // Use the order creation date for sales records
       const saleDate = orderData?.created_at ? new Date(orderData.created_at).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]
@@ -83,9 +96,11 @@ export async function POST(request: NextRequest) {
         table_id: tableId,
         table_number: tableData?.table_number || "",
         order_id: orderId,
-        server_id: orderData?.server_id,
-        server_name: serverData?.name || "",
+        server_id: tableData?.opened_by || orderData?.server_id,
+        server_name: tableData?.opened_by_name || serverData?.name || "",
         total_amount: orderTotal,
+        complimentary_amount: totalComplimentaryAmount,
+        complimentary_count: totalComplimentaryCount,
         payment_method: paymentMethod,
       })
     }

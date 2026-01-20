@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import type { Table, MenuCategory, MenuItem, Order, OrderItem } from "@/lib/types"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -29,7 +30,7 @@ interface CartItem {
   cartItemId: string // ID unique pour la BDD
   menuItem: MenuItem | null // Peut être null si non trouvé
   quantity: number
-  status: "pending" | "to_follow_1" | "to_follow_2"
+  status: "pending" | "to_follow_1" | "to_follow_2" | "fired" | "completed"
   notes?: string
   isComplimentary?: boolean
   complimentaryReason?: string
@@ -96,6 +97,66 @@ export default function OrderPage() {
     }
   }, [user, tableId])
 
+  // Realtime : écouter les changements sur order_items pour mise à jour instantanée
+  useEffect(() => {
+    if (!currentOrder?.id) return
+
+    const supabase = createClient()
+    
+    const channel = supabase
+      .channel(`order_${currentOrder.id}`)
+      .on('postgres_changes', {
+        event: '*', // INSERT, UPDATE, DELETE
+        schema: 'public',
+        table: 'order_items',
+        filter: `order_id=eq.${currentOrder.id}` // Seulement pour cette commande
+      }, (payload) => {
+        // Mapper le payload vers notre format CartItem
+        const mapPayloadToCartItem = (item: any): CartItem => {
+          const menuItem = menuItems.find((m: MenuItem) => m.id === item.menu_item_id)
+          return {
+            id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            cartItemId: item.id,
+            menuItem: menuItem || null,
+            quantity: item.quantity,
+            status: item.status as CartItem['status'],
+            notes: item.notes,
+            isComplimentary: item.is_complimentary,
+            complimentaryReason: item.complimentary_reason,
+          }
+        }
+
+        if (payload.eventType === 'INSERT') {
+          // Ajouter le nouvel item au panier
+          const newItem = mapPayloadToCartItem(payload.new)
+          if (newItem.status !== 'fired' && newItem.status !== 'completed') {
+            setCart(prev => [...prev, newItem])
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          // Mettre à jour l'item existant
+          setCart(prev => prev.map(item => {
+            if (item.cartItemId === payload.new.id) {
+              const updatedItem = mapPayloadToCartItem(payload.new)
+              // Garder dans le panier seulement si pas fired/completed
+              return (updatedItem.status !== 'fired' && updatedItem.status !== 'completed')
+                ? updatedItem
+                : item
+            }
+            return item
+          }))
+        } else if (payload.eventType === 'DELETE') {
+          // Supprimer l'item du panier
+          setCart(prev => prev.filter(item => item.cartItemId !== payload.old.id))
+        }
+      })
+      .subscribe()
+
+    // Cleanup : se désabonner au démontage
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentOrder?.id, menuItems])
+
   const fetchData = async () => {
     try {
       // Fetch table
@@ -134,25 +195,25 @@ export default function OrderPage() {
             const toFollow2Items = orderData.items.filter((item: OrderItem) => item.status === "to_follow_2")
             const firedItems = orderData.items.filter((item: OrderItem) => item.status === "fired" || item.status === "completed")
             
-            // VIDER le panier et ne mettre QUE les articles "à suivre"
-            const cartItems = [...toFollow1Items, ...toFollow2Items].map((item: OrderItem) => {
+            // Mettre TOUS les articles non envoyés dans le panier (pending + to_follow)
+            const cartItems = [...pendingItems, ...toFollow1Items, ...toFollow2Items].map((item: OrderItem) => {
               const menuItem = itemsData.find((m: MenuItem) => m.id === item.menu_item_id)
               if (!menuItem) {
                 console.warn("[v0] MenuItem not found for item:", item.menu_item_id)
               }
               return {
                 id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                cartItemId: item.cart_item_id || generateUniqueId(menuItem?.name || 'unknown'), // ← NOUVEAU
+                cartItemId: item.id, // Utiliser l'ID de la BDD comme référence unique
                 menuItem: menuItem || null,
                 quantity: item.quantity,
-                status: item.status as "to_follow_1" | "to_follow_2",
+                status: item.status as "pending" | "to_follow_1" | "to_follow_2",
                 notes: item.notes,
                 isComplimentary: item.is_complimentary,
                 complimentaryReason: item.complimentary_reason,
               }
             })
             
-            // Vider d'abord le panier, puis mettre les articles "à suivre"
+            // Vider d'abord le panier, puis mettre tous les articles non envoyés
             setCart([])
             setCart(cartItems)
             setExistingItems(firedItems)
@@ -162,7 +223,8 @@ export default function OrderPage() {
               toFollow1: toFollow1Items.length,
               toFollow2: toFollow2Items.length,
               fired: firedItems.length,
-              cartItems: cartItems.length
+              cartItems: cartItems.length, // Maintenant inclut pending + to_follow
+              totalInCart: pendingItems.length + toFollow1Items.length + toFollow2Items.length
             })
           }
         }
@@ -174,69 +236,218 @@ export default function OrderPage() {
     }
   }
 
-  const addToCart = (menuItem: MenuItem) => {
-    setCart((prev) => {
-      // Chercher un article existant avec le même produit ET le même statut "pending"
-      const existing = prev.find((item) => item.menuItem?.id === menuItem.id && item.status === "pending")
-      if (existing) {
-        // Si trouvé, augmenter la quantité de cet article spécifique
-        return prev.map((item) =>
-          item.menuItem?.id === menuItem.id && item.status === "pending"
-            ? { ...item, quantity: item.quantity + 1 }
-            : item,
-        )
+  const addToCart = async (menuItem: MenuItem) => {
+    // BDD source de vérité:
+    // - si un item "pending" identique existe déjà, on incrémente sa quantité
+    // - sinon, on insère un nouvel item en BDD
+    try {
+      const existingPending = cart.find(
+        (i) => i.status === "pending" && i.menuItem?.id === menuItem.id && (!i.notes || i.notes.trim() === ""),
+      )
+
+      if (existingPending) {
+        const response = await fetch("/api/orders/fire-follow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: currentOrder?.id,
+            items: [
+              {
+                cartItemId: existingPending.cartItemId,
+                menuItemId: menuItem.id,
+                quantity: existingPending.quantity + 1,
+                price: menuItem.price,
+                status: existingPending.status,
+                notes: existingPending.notes,
+                isComplimentary: existingPending.isComplimentary || false,
+                complimentaryReason: existingPending.complimentaryReason,
+              },
+            ],
+            serverId: user?.id || "",
+          }),
+        })
+
+        if (response.ok) {
+          // Plus besoin de fetchData() - Realtime gère la mise à jour
+        }
+        return
       }
-      // Sinon, créer un nouvel article avec un ID unique
-      return [...prev, { 
-        id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
-        cartItemId: generateUniqueId(menuItem.name), // ← NOUVEAU
-        menuItem, 
-        quantity: 1, 
-        status: "pending" 
-      }]
-    })
+
+      const orderData = {
+        tableId,
+        serverId: user?.id || "",
+        items: [
+          {
+            menuItemId: menuItem.id,
+            quantity: 1,
+            price: menuItem.price,
+            status: "pending",
+            notes: "",
+            isComplimentary: false,
+            complimentaryReason: "",
+          },
+        ],
+        supplements: [],
+        orderId: currentOrder?.id,
+      }
+
+      const response = await fetch("/api/orders/to-follow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData),
+      })
+
+      if (response.ok) {
+        // Plus besoin de fetchData() - Realtime gère la mise à jour
+      }
+    } catch (error) {
+      console.error("[v0] Error adding item to cart:", error)
+    }
   }
 
-  const removeFromCart = (cartItemId: string) => {
-    setCart((prev) => {
-      const existing = prev.find((item) => item.cartItemId === cartItemId)
-      if (existing && existing.quantity > 1) {
-        return prev.map((item) =>
-          item.cartItemId === cartItemId ? { ...item, quantity: item.quantity - 1 } : item,
-        )
+  const removeFromCart = async (cartItemId: string) => {
+    // Trouver l'article dans le panier
+    const item = cart.find((item) => item.cartItemId === cartItemId)
+    if (!item) return
+    
+    try {
+      if (item.quantity > 1) {
+        // Mettre à jour la quantité en utilisant l'API existante
+        const response = await fetch("/api/orders/fire-follow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: currentOrder?.id,
+            items: [{
+              cartItemId: cartItemId,
+              menuItemId: item.menuItem?.id || '',
+              quantity: item.quantity - 1,
+              price: item.menuItem?.price || 0,
+              status: item.status, // Garder le même statut
+              notes: item.notes,
+              isComplimentary: item.isComplimentary || false,
+              complimentaryReason: item.complimentaryReason,
+            }],
+            serverId: user?.id || "",
+          }),
+        })
+        
+        if (response.ok) {
+          // Plus besoin de fetchData() - Realtime gère la mise à jour
+        }
+      } else {
+        // Supprimer l'article
+        const response = await fetch("/api/orders/fire-follow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: currentOrder?.id,
+            items: [{
+              cartItemId: cartItemId,
+              menuItemId: item.menuItem?.id || '',
+              quantity: 0, // Quantité 0 = suppression
+              price: item.menuItem?.price || 0,
+              status: item.status,
+              notes: item.notes,
+              isComplimentary: item.isComplimentary || false,
+              complimentaryReason: item.complimentaryReason,
+            }],
+            serverId: user?.id || "",
+          }),
+        })
+        
+        if (response.ok) {
+          // Plus besoin de fetchData() - Realtime gère la mise à jour
+        }
       }
-      return prev.filter((item) => item.cartItemId !== cartItemId)
-    })
+    } catch (error) {
+      console.error("[v0] Error removing item from cart:", error)
+    }
   }
 
-  const toggleToFollow = (cartItemId: string) => {
-    setCart((prev) =>
-      prev.map((item) =>
-        item.id === cartItemId
-          ? { 
-              ...item, 
-              status: item.status === "pending" 
-                ? "to_follow_1" 
-                : item.status === "to_follow_1" 
-                  ? "to_follow_2" 
-                  : "pending" 
-            }
-          : item,
-      ),
-    )
+  const toggleToFollow = async (cartItemId: string) => {
+    // Trouver l'article actuel
+    const item = cart.find((item) => item.cartItemId === cartItemId)
+    if (!item) return
+    
+    // Calculer le nouveau statut
+    let newStatus: "pending" | "to_follow_1" | "to_follow_2"
+    if (item.status === "pending") {
+      newStatus = "to_follow_1"
+    } else if (item.status === "to_follow_1") {
+      newStatus = "to_follow_2"
+    } else {
+      newStatus = "pending"
+    }
+    
+    try {
+      // Mettre à jour le statut en base
+      const response = await fetch("/api/orders/fire-follow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: currentOrder?.id,
+          items: [{
+            cartItemId: cartItemId,
+            menuItemId: item.menuItem?.id || '',
+            quantity: item.quantity,
+            price: item.menuItem?.price || 0,
+            status: newStatus, // Nouveau statut
+            notes: item.notes,
+            isComplimentary: item.isComplimentary || false,
+            complimentaryReason: item.complimentaryReason,
+          }],
+          serverId: user?.id || "",
+        }),
+      })
+      
+      if (response.ok) {
+        // Plus besoin de fetchData() - Realtime gère la mise à jour
+      }
+    } catch (error) {
+      console.error("[v0] Error toggling to-follow status:", error)
+    }
   }
 
   const openNotesDialog = (cartItemId: string) => {
-    const item = cart.find((i) => i.id === cartItemId)
+    const item = cart.find((i) => i.cartItemId === cartItemId)
     setTempNotes(item?.notes || "")
     setNotesDialog({ open: true, itemId: cartItemId })
   }
 
-  const saveNotes = () => {
+  const saveNotes = async () => {
     if (notesDialog.itemId) {
-      setCart((prev) =>
-        prev.map((item) => (item.id === notesDialog.itemId ? { ...item, notes: tempNotes } : item)),
-      )
+      // Trouver l'article actuel
+      const item = cart.find((item) => item.cartItemId === notesDialog.itemId)
+      if (!item) return
+      
+      try {
+        // Mettre à jour les notes en base
+        const response = await fetch("/api/orders/fire-follow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: currentOrder?.id,
+            items: [{
+              cartItemId: notesDialog.itemId,
+              menuItemId: item.menuItem?.id || '',
+              quantity: item.quantity,
+              price: item.menuItem?.price || 0,
+              status: item.status,
+              notes: tempNotes, // Nouvelles notes
+              isComplimentary: item.isComplimentary || false,
+              complimentaryReason: item.complimentaryReason,
+            }],
+            serverId: user?.id || "",
+          }),
+        })
+        
+        if (response.ok) {
+          // Plus besoin de fetchData() - Realtime gère la mise à jour
+        }
+      } catch (error) {
+        console.error("[v0] Error saving notes:", error)
+      }
     }
     setNotesDialog({ open: false, itemId: null })
     setTempNotes("")
@@ -273,20 +484,49 @@ export default function OrderPage() {
     setComplimentaryDialog({ open: true, itemId, type })
   }
 
-  const saveComplimentary = () => {
+  const saveComplimentary = async () => {
     if (complimentaryDialog.type === "cart" && complimentaryDialog.itemId) {
-      setCart((prev) =>
-        prev.map((item) =>
-          item.id === complimentaryDialog.itemId
-            ? { ...item, isComplimentary: !item.isComplimentary, complimentaryReason: complimentaryReason }
-            : item,
-        ),
-      )
+      // Trouver l'article actuel
+      const item = cart.find((item) => item.cartItemId === complimentaryDialog.itemId)
+      if (!item) return
+      
+      try {
+        // Mettre à jour le statut offert en base
+        const response = await fetch("/api/orders/fire-follow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: currentOrder?.id,
+            items: [{
+              cartItemId: complimentaryDialog.itemId,
+              menuItemId: item.menuItem?.id || '',
+              quantity: item.quantity,
+              price: item.menuItem?.price || 0,
+              status: item.status,
+              notes: item.notes,
+              isComplimentary: !item.isComplimentary, // Inverser le statut
+              complimentaryReason: !item.isComplimentary ? complimentaryReason : "",
+            }],
+            serverId: user?.id || "",
+          }),
+        })
+        
+        if (response.ok) {
+          // Plus besoin de fetchData() - Realtime gère la mise à jour
+        }
+      } catch (error) {
+        console.error("[v0] Error saving complimentary status:", error)
+      }
     } else if (complimentaryDialog.type === "supplement" && complimentaryDialog.itemId) {
+      // Les suppléments ne sont pas persistés en BDD avant l'envoi: on reste en local
       setSupplements((prev) =>
         prev.map((sup) =>
           sup.id === complimentaryDialog.itemId
-            ? { ...sup, isComplimentary: !sup.isComplimentary, complimentaryReason: complimentaryReason, amount: 0 }
+            ? {
+                ...sup,
+                isComplimentary: !sup.isComplimentary,
+                complimentaryReason: !sup.isComplimentary ? complimentaryReason : "",
+              }
             : sup,
         ),
       )
@@ -326,14 +566,28 @@ export default function OrderPage() {
       return
     }
 
-    // Préparer TOUS les articles pour la sauvegarde
-    const allItems = cart.map((item) => {
-      const isBeingSent = itemsToSend.some(sentItem => sentItem.id === item.id)
+    // Préparer TOUS les articles du panier pour que l'API sache lesquels garder
+    const allItemsForAPI = cart.map((item) => {
+      // Les articles à envoyer deviennent "fired"
+      if (itemsToSend.some(sendItem => sendItem.cartItemId === item.cartItemId)) {
+        return {
+          cartItemId: item.cartItemId,
+          menuItemId: item.menuItem?.id || '',
+          quantity: item.quantity,
+          price: item.menuItem?.price || 0,
+          status: "fired", // Les items envoyés deviennent "fired"
+          notes: item.notes,
+          isComplimentary: item.isComplimentary || false,
+          complimentaryReason: item.complimentaryReason,
+        }
+      }
+      // Les articles "à suivre" gardent leur statut
       return {
+        cartItemId: item.cartItemId,
         menuItemId: item.menuItem?.id || '',
         quantity: item.quantity,
         price: item.menuItem?.price || 0,
-        status: isBeingSent ? "fired" : item.status, // Les items envoyés deviennent "fired"
+        status: item.status, // Garder le statut "à suivre"
         notes: item.notes,
         isComplimentary: item.isComplimentary || false,
         complimentaryReason: item.complimentaryReason,
@@ -343,7 +597,7 @@ export default function OrderPage() {
     const orderData = {
       tableId,
       serverId: user?.id || "",
-      items: allItems, // TOUS les articles sont sauvegardés
+      items: allItemsForAPI, // TOUS les articles du panier
       supplements: supplementsToSend.map((sup) => ({
         name: sup.name,
         amount: sup.amount,
@@ -369,18 +623,15 @@ export default function OrderPage() {
       })
 
       if (response.ok) {
-        const order = await response.json()
-        setCurrentOrder(order)
-        
-        // Vider le panier - la BDD est la source de vérité
-        setCart([])
-        
+        // On se resynchronise depuis la BDD (source de vérité)
+        await fetchData()
+
         // Vider les suppléments seulement s'ils ont été envoyés
         if (supplementsToSend.length > 0) {
           setSupplements([])
         }
-        
-        console.log("[v0] Order sent and cart cleared")
+
+        alert(`${getFollowNumberText()} envoyés à la cuisine !`)
       } else {
         throw new Error("Failed to create order")
       }
@@ -423,19 +674,27 @@ export default function OrderPage() {
         return
       }
 
-      // Envoyer les articles "à suivre" à la cuisine avec le statut "fired"
-      const orderData = {
-        tableId,
-        serverId: user?.id || "",
-        items: toFollowItems.map((item) => ({
-          menuItemId: item.menuItem?.id || '',
+      // Utiliser /api/orders (c'est lui qui passe en "fired" + crée les tickets)
+      // On envoie tous les items du panier, en marquant uniquement le batch choisi en "fired".
+      const allItemsForAPI = cart.map((item) => {
+        const shouldFire = toFollowItems.some((f) => f.cartItemId === item.cartItemId)
+        return {
+          cartItemId: item.cartItemId,
+          menuItemId: item.menuItem?.id || "",
           quantity: item.quantity,
           price: item.menuItem?.price || 0,
-          status: "fired", // Les articles envoyés deviennent "fired"
+          status: shouldFire ? "fired" : item.status,
           notes: item.notes,
           isComplimentary: item.isComplimentary || false,
           complimentaryReason: item.complimentaryReason,
-        })),
+        }
+      })
+
+      const orderData = {
+        tableId,
+        serverId: user?.id || "",
+        items: allItemsForAPI,
+        supplements: [],
         orderId: currentOrder?.id,
       }
 
@@ -446,16 +705,8 @@ export default function OrderPage() {
       })
 
       if (response.ok) {
-        const order = await response.json()
-        setCurrentOrder(order)
-        
-        // Supprimer seulement les plats qui ont été envoyés
-        const statusToRemove = toFollowItems[0].status
-        setCart(cart.filter(item => item.status !== statusToRemove))
-        
         await fetchData()
-        
-        alert(`${getFollowNumberText()} envoyés à la cuisine !`)
+        alert(`${followNumber} envoyés à la cuisine !`)
       }
     } catch (error) {
       console.error("[v0] Error firing to follow items:", error)
@@ -473,50 +724,9 @@ export default function OrderPage() {
   }
 
   const handleBackClick = async () => {
-  // Sauvegarder les articles du panier avant de quitter
-  if (cart.length > 0) {
-    try {
-      // Sauvegarder les articles du panier avec leurs statuts actuels
-      const allItems = cart.map((item) => ({
-        menuItemId: item.menuItem?.id || '',
-        quantity: item.quantity,
-        price: item.menuItem?.price || 0,
-        status: item.status, // Garder le statut actuel (pending, to_follow_1, to_follow_2)
-        notes: item.notes,
-        isComplimentary: item.isComplimentary || false,
-        complimentaryReason: item.complimentaryReason,
-      }))
-
-      const orderData = {
-        tableId,
-        serverId: user?.id || "",
-        items: allItems,
-        supplements: [], // Pas de suppléments quand on quitte
-        orderId: currentOrder?.id,
-      }
-
-      if (isOnline) {
-        const response = await fetch("/api/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(orderData),
-        })
-
-        if (response.ok) {
-          console.log("[v0] Cart saved before leaving")
-        }
-      } else {
-        savePendingOrder(orderData)
-        console.log("[v0] Cart saved offline before leaving")
-      }
-    } catch (error) {
-      console.error("[v0] Error saving cart before leaving:", error)
-    }
+    // Plus besoin de sauvegarder : tous les articles sont déjà en base
+    router.push("/floor-plan")
   }
-  
-  // Quitter la page sans vider le panier (la BDD est la source de vérité)
-  router.push("/floor-plan")
-}
 
   const filteredItems = menuItems.filter((item) => item.category_id === selectedCategory)
   const cartTotal =
@@ -778,7 +988,7 @@ export default function OrderPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => removeFromCart(item.id)}
+                            onClick={() => removeFromCart(item.cartItemId)}
                             className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700"
                           >
                             <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -800,7 +1010,7 @@ export default function OrderPage() {
                         <Button
                           size="sm"
                           variant={item.status === "to_follow_1" || item.status === "to_follow_2" ? "default" : "outline"}
-                          onClick={() => toggleToFollow(item.id)}
+                          onClick={() => toggleToFollow(item.cartItemId)}
                           className={
                             item.status === "to_follow_1" || item.status === "to_follow_2"
                               ? "bg-yellow-600 hover:bg-yellow-700 text-white text-xs"
@@ -813,7 +1023,7 @@ export default function OrderPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => openNotesDialog(item.id)}
+                          onClick={() => openNotesDialog(item.cartItemId)}
                           className="bg-slate-800 border-slate-700 text-xs"
                         >
                           Notes
@@ -821,7 +1031,7 @@ export default function OrderPage() {
                         <Button
                           size="sm"
                           variant={item.isComplimentary ? "default" : "outline"}
-                          onClick={() => toggleComplimentary(item.id, "cart")}
+                          onClick={() => toggleComplimentary(item.cartItemId, "cart")}
                           className={
                             item.isComplimentary
                               ? "bg-green-600 hover:bg-green-700 text-white text-xs"

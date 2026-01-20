@@ -27,8 +27,13 @@ export async function POST(request: NextRequest) {
 
       currentOrderId = newOrder.id
 
-      // Update table status to occupied
-      await supabase.from("tables").update({ status: "occupied" }).eq("id", tableId)
+      // Update table status to occupied and record who opened it
+      const { data: server } = await supabase.from("users").select("name").eq("id", serverId).single()
+      await supabase.from("tables").update({ 
+        status: "occupied",
+        opened_by: serverId,
+        opened_by_name: server?.name || null
+      }).eq("id", tableId)
     }
 
     // Insert to_follow items in database (but don't fire them)

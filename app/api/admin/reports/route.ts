@@ -17,6 +17,9 @@ export async function GET(request: NextRequest) {
     if (period === "custom" && customStartDate && customEndDate) {
       startDate.setTime(new Date(customStartDate).getTime())
       endDate.setTime(new Date(customEndDate).getTime())
+    } else if (period === "today") {
+      // Aujourd'hui : même jour pour début et fin
+      // Pas besoin de modifier les dates, on utilise today
     } else {
       switch (period) {
         case "7days":
@@ -31,8 +34,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const startDateStr = startDate.toISOString().split("T")[0]
-    const endDateStr = endDate.toISOString().split("T")[0]
+    const startDateStr = period === "today" ? new Date().toISOString().split("T")[0] : startDate.toISOString().split("T")[0]
+    const endDateStr = period === "today" ? new Date().toISOString().split("T")[0] : endDate.toISOString().split("T")[0]
 
     // Fetch daily sales data
     const { data: dailySales } = await supabase
@@ -46,10 +49,12 @@ export async function GET(request: NextRequest) {
     const salesByDate = (dailySales || []).reduce((acc: any, sale: any) => {
       const date = sale.date
       if (!acc[date]) {
-        acc[date] = { date, total: 0, orders: 0 }
+        acc[date] = { date, total: 0, orders: 0, complimentary: 0, complimentaryCount: 0 }
       }
       acc[date].total += Number.parseFloat(sale.total_amount)
       acc[date].orders += 1
+      acc[date].complimentary += Number.parseFloat(sale.complimentary_amount || 0)
+      acc[date].complimentaryCount += parseInt(sale.complimentary_count || 0)
       return acc
     }, {})
 
@@ -62,6 +67,16 @@ export async function GET(request: NextRequest) {
     )
     const totalOrders = (dailySales || []).length
     const averageTicket = totalOrders > 0 ? totalSales / totalOrders : 0
+
+    // Calculate complimentary stats
+    const totalComplimentaryAmount = (dailySales || []).reduce(
+      (sum: number, sale: any) => sum + Number.parseFloat(sale.complimentary_amount || 0),
+      0,
+    )
+    const totalComplimentaryCount = (dailySales || []).reduce(
+      (sum: number, sale: any) => sum + parseInt(sale.complimentary_count || 0),
+      0,
+    )
 
     // Calculate TVA (assuming 20% for most items, 10% for some)
     const totalTax = totalSales * 0.18 // Approximate
@@ -108,16 +123,21 @@ export async function GET(request: NextRequest) {
           server_name: serverName,
           total_sales: 0,
           order_count: 0,
+          complimentary_amount: 0,
+          complimentary_count: 0,
         }
       }
       acc[serverName].total_sales += Number.parseFloat(sale.total_amount)
       acc[serverName].order_count += 1
+      acc[serverName].complimentary_amount += Number.parseFloat(sale.complimentary_amount || 0)
+      acc[serverName].complimentary_count += parseInt(sale.complimentary_count || 0)
       return acc
     }, {})
 
     const serverStats = Object.values(serverStatsMap).map((server: any) => ({
       ...server,
       average_ticket: server.order_count > 0 ? server.total_sales / server.order_count : 0,
+      complimentary_percentage: server.total_sales > 0 ? (server.complimentary_amount / server.total_sales) * 100 : 0,
     }))
 
     return NextResponse.json({
@@ -129,6 +149,9 @@ export async function GET(request: NextRequest) {
         totalOrders,
         averageTicket,
         totalTax,
+        totalComplimentaryAmount,
+        totalComplimentaryCount,
+        complimentaryPercentage: totalSales > 0 ? (totalComplimentaryAmount / totalSales) * 100 : 0,
       },
     })
   } catch (error) {
