@@ -37,6 +37,8 @@ export default function BillPage() {
   const [selectedItemQuantities, setSelectedItemQuantities] = useState<Map<string, number>>(new Map())
   const [paymentDialog, setPaymentDialog] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash")
+  const [cashGiven, setCashGiven] = useState("")
+  const [tipAmount, setTipAmount] = useState("")
   const [paidAmount, setPaidAmount] = useState(0)
   const [paymentsCount, setPaymentsCount] = useState(0)
   const [showSuccessDialog, setShowSuccessDialog] = useState(false)
@@ -228,6 +230,8 @@ export default function BillPage() {
   const handlePayment = async () => {
     try {
       const amount = calculateSplitAmount()
+      const tipValue = paymentMethod === "cash" ? Math.max(0, Number.parseFloat(tipAmount) || 0) : 0
+      const recordedBy = user?.id || null
 
       const itemQuantities = splitMode === "items" ? Object.fromEntries(selectedItemQuantities) : null
 
@@ -242,6 +246,8 @@ export default function BillPage() {
           splitMode,
           itemQuantities,
           customAmount: showCustomAmount ? customAmount : null,
+          tipAmount: tipValue,
+          recordedBy,
         }),
       })
 
@@ -250,6 +256,8 @@ export default function BillPage() {
         setPaymentDialog(false)
         setCustomAmount("")
         setShowCustomAmount(false)
+        setCashGiven("")
+        setTipAmount("")
 
         if (result.isFullyPaid) {
           localStorage.removeItem(PAYMENT_STATE_KEY + tableId)
@@ -433,6 +441,10 @@ export default function BillPage() {
   const total = calculateTotal()
   const remainingAmount = calculateRemainingAmount()
   const splitAmount = calculateSplitAmount()
+  const cashGivenValue = Number.parseFloat(cashGiven) || 0
+  const tipValue = Number.parseFloat(tipAmount) || 0
+  const totalWithTip = splitAmount + (paymentMethod === "cash" ? Math.max(0, tipValue) : 0)
+  const changeDue = cashGivenValue - totalWithTip
   const selectedItemsCount = Array.from(selectedItemQuantities.values()).reduce((sum, qty) => sum + qty, 0)
   const complimentaryCount =
     items.filter((item) => item.is_complimentary).length + supplements.filter((sup) => sup.is_complimentary).length
@@ -792,6 +804,8 @@ export default function BillPage() {
                 onClick={() => {
                   setPaymentMethod("cash")
                   setPaymentDialog(true)
+                  setCashGiven("")
+                  setTipAmount("")
                 }}
                 className="w-full bg-green-600 hover:bg-green-700 text-white text-base sm:text-lg py-5 sm:py-6"
                 disabled={splitMode === "items" && selectedItemsCount === 0}
@@ -803,6 +817,8 @@ export default function BillPage() {
                 onClick={() => {
                   setPaymentMethod("card")
                   setPaymentDialog(true)
+                  setCashGiven("")
+                  setTipAmount("")
                 }}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white text-base sm:text-lg py-5 sm:py-6"
                 disabled={splitMode === "items" && selectedItemsCount === 0}
@@ -839,6 +855,56 @@ export default function BillPage() {
                 </Badge>
               </div>
             </div>
+            {paymentMethod === "cash" && (
+              <div className="mt-6 space-y-4">
+                <div>
+                  <Label htmlFor="cash-given" className="text-slate-300">
+                    Espèces données
+                  </Label>
+                  <Input
+                    id="cash-given"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={cashGiven}
+                    onChange={(e) => setCashGiven(e.target.value)}
+                    placeholder="0.00"
+                    className="mt-2 bg-slate-900 border-slate-700 text-white"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="tip-amount" className="text-slate-300">
+                    Pourboire (optionnel)
+                  </Label>
+                  <Input
+                    id="tip-amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={tipAmount}
+                    onChange={(e) => setTipAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="mt-2 bg-slate-900 border-slate-700 text-white"
+                  />
+                </div>
+                <div className="bg-slate-900 p-3 rounded-lg">
+                  <div className="flex justify-between text-sm text-slate-400">
+                    <span>Total à régler</span>
+                    <span>{totalWithTip.toFixed(2)} €</span>
+                  </div>
+                  {cashGivenValue > 0 && (
+                    <div className="flex justify-between text-base mt-2">
+                      <span className="text-slate-300">
+                        {changeDue >= 0 ? "Rendu" : "Manque"}
+                      </span>
+                      <span className={changeDue >= 0 ? "text-green-400 font-semibold" : "text-red-400 font-semibold"}>
+                        {Math.abs(changeDue).toFixed(2)} €
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPaymentDialog(false)} className="bg-slate-700 border-slate-600">

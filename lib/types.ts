@@ -115,6 +115,7 @@ export interface Payment {
   id: string
   order_id: string
   amount: number
+  tip_amount?: number
   payment_method: "cash" | "card" | "other"
   created_at: string
 }

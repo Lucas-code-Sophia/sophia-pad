@@ -3,8 +3,13 @@ import { createServerClient } from "@/lib/supabase/server"
 
 export async function POST(request: NextRequest) {
   try {
-    const { orderId, amount, paymentMethod, tableId, splitMode, itemQuantities, discount } = await request.json()
+    const { orderId, amount, paymentMethod, tableId, splitMode, itemQuantities, discount, tipAmount, recordedBy } =
+      await request.json()
     const supabase = await createServerClient()
+
+    if (!recordedBy) {
+      return NextResponse.json({ error: "Missing recordedBy" }, { status: 400 })
+    }
 
     const { data: paymentData, error: paymentError } = await supabase
       .from("payments")
@@ -12,6 +17,8 @@ export async function POST(request: NextRequest) {
         order_id: orderId,
         amount,
         payment_method: paymentMethod,
+        tip_amount: Math.max(0, Number(tipAmount) || 0),
+        recorded_by: recordedBy,
         metadata: { splitMode, itemQuantities, discount },
       })
       .select()

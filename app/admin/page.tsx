@@ -19,6 +19,7 @@ import {
   FileText,
   BarChart3,
   Calendar,
+  DollarSign,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -472,6 +473,26 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent className="p-4 sm:p-6 pt-0">
             <p className="text-slate-300 text-xs sm:text-sm">Graphiques de ventes, top plats et statistiques</p>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="bg-slate-800 border-slate-700 hover:border-emerald-500 transition-colors cursor-pointer"
+          onClick={() => router.push("/admin/tips")}
+        >
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 sm:p-3 bg-emerald-600 rounded-lg">
+                <DollarSign className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-white text-base sm:text-lg">Pourboires</CardTitle>
+                <CardDescription className="text-slate-400 text-xs sm:text-sm">Récapitulatif hebdomadaire</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6 pt-0">
+            <p className="text-slate-300 text-xs sm:text-sm">Total et répartition des pourboires</p>
           </CardContent>
         </Card>
 

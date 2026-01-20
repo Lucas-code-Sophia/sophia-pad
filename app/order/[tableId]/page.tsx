@@ -333,7 +333,7 @@ export default function OrderPage() {
         })
         
         if (response.ok) {
-          // Plus besoin de fetchData() - Realtime gère la mise à jour
+          await fetchData()
         }
       } else {
         // Supprimer l'article
@@ -357,7 +357,7 @@ export default function OrderPage() {
         })
         
         if (response.ok) {
-          // Plus besoin de fetchData() - Realtime gère la mise à jour
+          await fetchData()
         }
       }
     } catch (error) {
