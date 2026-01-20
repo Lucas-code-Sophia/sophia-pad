@@ -59,6 +59,15 @@ export interface MenuCategory {
   created_at: string
 }
 
+export interface Inventory {
+  id: string
+  menu_item_id: string
+  quantity: number
+  last_updated: string
+  created_by?: string
+  created_at: string
+}
+
 export interface MenuItem {
   id: string
   category_id: string
@@ -71,6 +80,7 @@ export interface MenuItem {
   out_of_stock?: boolean
   out_of_stock_date?: string
   category?: string
+  stock_quantity?: number // Current stock level from inventory
 }
 
 export interface Order {

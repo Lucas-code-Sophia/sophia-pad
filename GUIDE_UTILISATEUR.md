@@ -262,4 +262,4 @@ Seuls les utilisateurs avec le rôle "Manager" peuvent accéder à l'administrat
 Pour toute question ou problème technique, contactez votre administrateur système ou le support technique.
 
 **Version de l'application:** 2.0  
-**Dernière mise à jour:** Octobre 2025
+**Dernière mise à jour:** Lundi 19 Janvier 2026 à 22:06
