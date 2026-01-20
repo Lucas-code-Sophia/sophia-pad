@@ -16,8 +16,18 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useOfflineManager } from "@/lib/offline-manager"
 import { OfflineIndicator } from "@/components/offline-indicator"
 
+// Fonction pour générer un ID unique
+const generateUniqueId = (productName: string) => {
+  const name = productName.toLowerCase().replace(/\s+/g, '-')
+  const time = new Date().toTimeString().slice(0, 5).replace(':', '')
+  const random = Math.random().toString(36).substr(2, 4)
+  return `${name}-${time}-${random}`
+}
+
 interface CartItem {
-  menuItem: MenuItem
+  id: string // ID du panier (React)
+  cartItemId: string // ID unique pour la BDD
+  menuItem: MenuItem | null // Peut être null si non trouvé
   quantity: number
   status: "pending" | "to_follow_1" | "to_follow_2"
   notes?: string
@@ -110,15 +120,51 @@ export default function OrderPage() {
       if (itemsRes.ok) {
         const itemsData = await itemsRes.json()
         setMenuItems(itemsData)
-      }
-
-      // Fetch current order if table is occupied
-      const orderRes = await fetch(`/api/orders/table/${tableId}`)
-      if (orderRes.ok) {
-        const orderData = await orderRes.json()
-        if (orderData) {
-          setCurrentOrder(orderData.order)
-          setExistingItems(orderData.items)
+        
+        // Maintenant que menuItems est chargé, fetch les orders
+        const orderRes = await fetch(`/api/orders/table/${tableId}`)
+        if (orderRes.ok) {
+          const orderData = await orderRes.json()
+          if (orderData) {
+            setCurrentOrder(orderData.order)
+            
+            // Organiser les articles selon leur statut
+            const pendingItems = orderData.items.filter((item: OrderItem) => item.status === "pending")
+            const toFollow1Items = orderData.items.filter((item: OrderItem) => item.status === "to_follow_1")
+            const toFollow2Items = orderData.items.filter((item: OrderItem) => item.status === "to_follow_2")
+            const firedItems = orderData.items.filter((item: OrderItem) => item.status === "fired" || item.status === "completed")
+            
+            // VIDER le panier et ne mettre QUE les articles "à suivre"
+            const cartItems = [...toFollow1Items, ...toFollow2Items].map((item: OrderItem) => {
+              const menuItem = itemsData.find((m: MenuItem) => m.id === item.menu_item_id)
+              if (!menuItem) {
+                console.warn("[v0] MenuItem not found for item:", item.menu_item_id)
+              }
+              return {
+                id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                cartItemId: item.cart_item_id || generateUniqueId(menuItem?.name || 'unknown'), // ← NOUVEAU
+                menuItem: menuItem || null,
+                quantity: item.quantity,
+                status: item.status as "to_follow_1" | "to_follow_2",
+                notes: item.notes,
+                isComplimentary: item.is_complimentary,
+                complimentaryReason: item.complimentary_reason,
+              }
+            })
+            
+            // Vider d'abord le panier, puis mettre les articles "à suivre"
+            setCart([])
+            setCart(cartItems)
+            setExistingItems(firedItems)
+            
+            console.log("[v0] Order loaded:", {
+              pending: pendingItems.length,
+              toFollow1: toFollow1Items.length,
+              toFollow2: toFollow2Items.length,
+              fired: firedItems.length,
+              cartItems: cartItems.length
+            })
+          }
         }
       }
     } catch (error) {
@@ -130,36 +176,43 @@ export default function OrderPage() {
 
   const addToCart = (menuItem: MenuItem) => {
     setCart((prev) => {
-      const existing = prev.find((item) => item.menuItem.id === menuItem.id && item.status === "pending")
+      // Chercher un article existant avec le même produit ET le même statut "pending"
+      const existing = prev.find((item) => item.menuItem?.id === menuItem.id && item.status === "pending")
       if (existing) {
+        // Si trouvé, augmenter la quantité de cet article spécifique
         return prev.map((item) =>
-          item.menuItem.id === menuItem.id && item.status === "pending"
+          item.menuItem?.id === menuItem.id && item.status === "pending"
             ? { ...item, quantity: item.quantity + 1 }
             : item,
         )
       }
-      return [...prev, { menuItem, quantity: 1, status: "pending" }]
+      // Sinon, créer un nouvel article avec un ID unique
+      return [...prev, { 
+        id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
+        cartItemId: generateUniqueId(menuItem.name), // ← NOUVEAU
+        menuItem, 
+        quantity: 1, 
+        status: "pending" 
+      }]
     })
   }
 
-  const removeFromCart = (menuItemId: string) => {
+  const removeFromCart = (cartItemId: string) => {
     setCart((prev) => {
-      const existing = prev.find((item) => item.menuItem.id === menuItemId && item.status === "pending")
+      const existing = prev.find((item) => item.cartItemId === cartItemId)
       if (existing && existing.quantity > 1) {
         return prev.map((item) =>
-          item.menuItem.id === menuItemId && item.status === "pending"
-            ? { ...item, quantity: item.quantity - 1 }
-            : item,
+          item.cartItemId === cartItemId ? { ...item, quantity: item.quantity - 1 } : item,
         )
       }
-      return prev.filter((item) => !(item.menuItem.id === menuItemId && item.status === "pending"))
+      return prev.filter((item) => item.cartItemId !== cartItemId)
     })
   }
 
-  const toggleToFollow = (menuItemId: string) => {
+  const toggleToFollow = (cartItemId: string) => {
     setCart((prev) =>
       prev.map((item) =>
-        item.menuItem.id === menuItemId
+        item.id === cartItemId
           ? { 
               ...item, 
               status: item.status === "pending" 
@@ -173,16 +226,16 @@ export default function OrderPage() {
     )
   }
 
-  const openNotesDialog = (menuItemId: string) => {
-    const item = cart.find((i) => i.menuItem.id === menuItemId)
+  const openNotesDialog = (cartItemId: string) => {
+    const item = cart.find((i) => i.id === cartItemId)
     setTempNotes(item?.notes || "")
-    setNotesDialog({ open: true, itemId: menuItemId })
+    setNotesDialog({ open: true, itemId: cartItemId })
   }
 
   const saveNotes = () => {
     if (notesDialog.itemId) {
       setCart((prev) =>
-        prev.map((item) => (item.menuItem.id === notesDialog.itemId ? { ...item, notes: tempNotes } : item)),
+        prev.map((item) => (item.id === notesDialog.itemId ? { ...item, notes: tempNotes } : item)),
       )
     }
     setNotesDialog({ open: false, itemId: null })
@@ -224,7 +277,7 @@ export default function OrderPage() {
     if (complimentaryDialog.type === "cart" && complimentaryDialog.itemId) {
       setCart((prev) =>
         prev.map((item) =>
-          item.menuItem.id === complimentaryDialog.itemId
+          item.id === complimentaryDialog.itemId
             ? { ...item, isComplimentary: !item.isComplimentary, complimentaryReason: complimentaryReason }
             : item,
         ),
@@ -245,36 +298,52 @@ export default function OrderPage() {
   const sendOrder = async () => {
     if (cart.length === 0 && supplements.length === 0) return
 
-    // Filtrer pour n'envoyer que les plats qui ne sont PAS en "à suivre"
-    const itemsToSend = cart.filter((item) => item.status === "pending")
+    // Séparer ce qui doit être envoyé immédiatement vs ce qui reste en "à suivre"
+    let itemsToSend = cart.filter((item) => item.status === "pending")
+    const itemsToKeep = cart.filter((item) => item.status !== "pending") // Les "à suivre"
     
-    // N'envoyer les suppléments que s'il y a des plats à envoyer immédiatement
+    // Si aucun article "pending" mais qu'il y a des "à suivre 1", les envoyer
+    if (itemsToSend.length === 0) {
+      const toFollow1Items = cart.filter((item) => item.status === "to_follow_1")
+      if (toFollow1Items.length > 0) {
+        itemsToSend = toFollow1Items
+        console.log("[v0] No pending items, sending to_follow_1 items instead")
+      }
+    }
+    
+    // N'envoyer les suppléments que s'il y a des plats à envoyer
     const supplementsToSend = itemsToSend.length > 0 ? supplements : []
 
     console.log("🔍 DEBUG sendOrder:")
     console.log("- Cart total:", cart.length)
-    console.log("- Items to send (pending):", itemsToSend.length)
-    console.log("- Items à suivre 1:", cart.filter(item => item.status === "to_follow_1").length)
-    console.log("- Items à suivre 2:", cart.filter(item => item.status === "to_follow_2").length)
+    console.log("- Items to send (pending):", cart.filter((item) => item.status === "pending").length)
+    console.log("- Items to send (final):", itemsToSend.length)
+    console.log("- Items to keep (à suivre):", itemsToKeep.length)
     console.log("- Supplements to send:", supplementsToSend.length)
 
     if (itemsToSend.length === 0 && supplementsToSend.length === 0) {
-      alert("Aucun plat à envoyer immédiatement (tous sont en 'à suivre')")
+      alert("Aucun plat à envoyer")
       return
     }
+
+    // Préparer TOUS les articles pour la sauvegarde
+    const allItems = cart.map((item) => {
+      const isBeingSent = itemsToSend.some(sentItem => sentItem.id === item.id)
+      return {
+        menuItemId: item.menuItem?.id || '',
+        quantity: item.quantity,
+        price: item.menuItem?.price || 0,
+        status: isBeingSent ? "fired" : item.status, // Les items envoyés deviennent "fired"
+        notes: item.notes,
+        isComplimentary: item.isComplimentary || false,
+        complimentaryReason: item.complimentaryReason,
+      }
+    })
 
     const orderData = {
       tableId,
       serverId: user?.id || "",
-      items: itemsToSend.map((item) => ({
-        menuItemId: item.menuItem.id,
-        quantity: item.quantity,
-        price: item.menuItem.price,
-        status: "fired", // Les plats envoyés directement sont "fired"
-        notes: item.notes,
-        isComplimentary: item.isComplimentary || false,
-        complimentaryReason: item.complimentaryReason,
-      })),
+      items: allItems, // TOUS les articles sont sauvegardés
       supplements: supplementsToSend.map((sup) => ({
         name: sup.name,
         amount: sup.amount,
@@ -287,12 +356,7 @@ export default function OrderPage() {
 
     if (!isOnline) {
       savePendingOrder(orderData)
-      // Ne supprimer que les plats envoyés, garder les "à suivre"
-      setCart(cart.filter(item => item.status !== "pending"))
-      // Supprimer les suppléments seulement s'ils ont été envoyés
-      if (supplementsToSend.length > 0) {
-        setSupplements([])
-      }
+      setCart(itemsToKeep) // Garder seulement les "à suivre"
       alert("Commande enregistrée. Elle sera envoyée dès que la connexion sera rétablie.")
       return
     }
@@ -308,27 +372,25 @@ export default function OrderPage() {
         const order = await response.json()
         setCurrentOrder(order)
         
-        // Ne supprimer que les plats envoyés, garder les "à suivre"
-        setCart(cart.filter(item => item.status !== "pending"))
-        // Supprimer les suppléments seulement s'ils ont été envoyés
+        // Vider le panier - la BDD est la source de vérité
+        setCart([])
+        
+        // Vider les suppléments seulement s'ils ont été envoyés
         if (supplementsToSend.length > 0) {
           setSupplements([])
         }
         
-        // Rafraîchir les données existantes
-        fetchData()
+        console.log("[v0] Order sent and cart cleared")
       } else {
         throw new Error("Failed to create order")
       }
     } catch (error) {
       console.error("[v0] Error sending order:", error)
       savePendingOrder(orderData)
-      // Ne supprimer que les plats envoyés, garder les "à suivre"
-      setCart(cart.filter(item => item.status !== "pending"))
-      // Supprimer les suppléments seulement s'ils ont été envoyés
-      if (supplementsToSend.length > 0) {
-        setSupplements([])
-      }
+      
+      // Vider le panier même en erreur - la BDD est la source de vérité
+      setCart([])
+      console.log("[v0] Order saved offline and cart cleared")
       alert("Erreur réseau. Commande enregistrée et sera envoyée automatiquement.")
     }
   }
@@ -361,14 +423,15 @@ export default function OrderPage() {
         return
       }
 
+      // Envoyer les articles "à suivre" à la cuisine avec le statut "fired"
       const orderData = {
         tableId,
         serverId: user?.id || "",
         items: toFollowItems.map((item) => ({
-          menuItemId: item.menuItem.id,
+          menuItemId: item.menuItem?.id || '',
           quantity: item.quantity,
-          price: item.menuItem.price,
-          status: "fired",
+          price: item.menuItem?.price || 0,
+          status: "fired", // Les articles envoyés deviennent "fired"
           notes: item.notes,
           isComplimentary: item.isComplimentary || false,
           complimentaryReason: item.complimentaryReason,
@@ -409,9 +472,55 @@ export default function OrderPage() {
     )
   }
 
+  const handleBackClick = async () => {
+  // Sauvegarder les articles du panier avant de quitter
+  if (cart.length > 0) {
+    try {
+      // Sauvegarder les articles du panier avec leurs statuts actuels
+      const allItems = cart.map((item) => ({
+        menuItemId: item.menuItem?.id || '',
+        quantity: item.quantity,
+        price: item.menuItem?.price || 0,
+        status: item.status, // Garder le statut actuel (pending, to_follow_1, to_follow_2)
+        notes: item.notes,
+        isComplimentary: item.isComplimentary || false,
+        complimentaryReason: item.complimentaryReason,
+      }))
+
+      const orderData = {
+        tableId,
+        serverId: user?.id || "",
+        items: allItems,
+        supplements: [], // Pas de suppléments quand on quitte
+        orderId: currentOrder?.id,
+      }
+
+      if (isOnline) {
+        const response = await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(orderData),
+        })
+
+        if (response.ok) {
+          console.log("[v0] Cart saved before leaving")
+        }
+      } else {
+        savePendingOrder(orderData)
+        console.log("[v0] Cart saved offline before leaving")
+      }
+    } catch (error) {
+      console.error("[v0] Error saving cart before leaving:", error)
+    }
+  }
+  
+  // Quitter la page sans vider le panier (la BDD est la source de vérité)
+  router.push("/floor-plan")
+}
+
   const filteredItems = menuItems.filter((item) => item.category_id === selectedCategory)
   const cartTotal =
-    cart.reduce((sum, item) => sum + (item.isComplimentary ? 0 : item.menuItem.price * item.quantity), 0) +
+    cart.reduce((sum, item) => sum + (item.isComplimentary || !item.menuItem ? 0 : item.menuItem.price * item.quantity), 0) +
     supplements.reduce((sum, sup) => sum + (sup.isComplimentary ? 0 : sup.amount), 0) +
     existingItems.reduce((sum, item) => sum + (item.is_complimentary ? 0 : item.price * item.quantity), 0)
   const toFollowCount = cart.filter((item) => item.status === "to_follow_1" || item.status === "to_follow_2").length
@@ -485,7 +594,7 @@ export default function OrderPage() {
       {/* Header */}
       <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
         <Button
-          onClick={() => router.push("/floor-plan")}
+          onClick={handleBackClick}
           variant="outline"
           size="sm"
           className="bg-slate-800 text-white border-slate-700"
@@ -533,7 +642,7 @@ export default function OrderPage() {
           {/* Menu Items Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
             {filteredItems.map((item) => {
-              const cartItem = cart.find((c) => c.menuItem.id === item.id && c.status === "pending")
+              const cartItem = cart.find((c) => c.menuItem?.id === item.id && c.status === "pending")
               const quantity = cartItem?.quantity || 0
               const isOutOfStock = item.out_of_stock
 
@@ -542,33 +651,39 @@ export default function OrderPage() {
                   key={item.id}
                   className={`p-3 sm:p-4 transition-colors ${
                     isOutOfStock
-                      ? "bg-slate-900 border-red-700 opacity-60 cursor-not-allowed"
+                      ? "bg-red-900/30 border-2 border-red-700 opacity-60 cursor-not-allowed"
                       : "bg-slate-800 border-slate-700 cursor-pointer hover:bg-slate-750"
                   }`}
                   onClick={() => !isOutOfStock && addToCart(item)}
                 >
-                  <div className="flex flex-col h-full">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <h3
-                        className={`font-semibold text-sm sm:text-base ${isOutOfStock ? "text-slate-500" : "text-white"}`}
-                      >
-                        {item.name}
-                      </h3>
-                      {isOutOfStock && (
-                        <Badge className="bg-red-600 text-xs flex items-center gap-1 flex-shrink-0">
-                          <AlertCircle className="h-3 w-3" />
-                          Rupture
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="mt-auto flex items-center justify-between">
-                      <span
-                        className={`text-base sm:text-lg font-bold ${isOutOfStock ? "text-slate-600" : "text-blue-400"}`}
-                      >
-                        {item.price.toFixed(2)} €
-                      </span>
-                      {quantity > 0 && <Badge className="bg-blue-600 text-white text-xs">{quantity}</Badge>}
-                    </div>
+                  <div className="text-center">
+                    <div className="font-semibold text-white text-sm sm:text-base mb-1 truncate">{item.name}</div>
+                    <div className="text-xs sm:text-sm text-slate-400 mb-2">{item.price.toFixed(2)} €</div>
+                    {isOutOfStock ? (
+                      <div className="flex items-center justify-center gap-1 text-red-400">
+                        <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="text-xs sm:text-sm font-medium">Rupture</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-1">
+                        {quantity > 0 && (
+                          <Badge className="bg-blue-600 text-xs mb-1">
+                            {quantity}
+                          </Badge>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="bg-slate-700 hover:bg-slate-600 border-slate-600 text-white h-6 w-6 sm:h-7 sm:w-7 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            addToCart(item)
+                          }}
+                        >
+                          <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </Card>
               )
@@ -614,7 +729,11 @@ export default function OrderPage() {
                         {item.quantity}x {menuItems.find((m) => m.id === item.menu_item_id)?.name}
                       </span>
                       <Badge variant="default" className="text-xs">
-                        {item.status === "fired" ? "Envoyé" : item.status === "completed" ? "Terminé" : "En préparation"}
+                        {item.status === "fired" ? "Envoyé" : 
+                         item.status === "completed" ? "Terminé" : 
+                         item.status === "to_follow_1" ? "À suivre 1" :
+                         item.status === "to_follow_2" ? "À suivre 2" :
+                         "En attente"}
                       </Badge>
                     </div>
                   ))}
@@ -630,14 +749,14 @@ export default function OrderPage() {
                 <>
                   {cart.map((item, index) => (
                     <div
-                      key={`${item.menuItem.id}-${index}`}
+                      key={`${item.id}-${index}`}
                       className={`p-2 sm:p-3 rounded-lg ${item.isComplimentary ? "bg-green-900/20 border-2 border-green-700" : "bg-slate-900"}`}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <h4 className="font-medium text-white text-sm sm:text-base truncate">
-                              {item.menuItem.name}
+                              {item.menuItem?.name || "Article inconnu"}
                             </h4>
                             {item.isComplimentary && (
                               <Badge className="bg-green-600 text-xs flex items-center gap-1">
@@ -649,7 +768,7 @@ export default function OrderPage() {
                           <p
                             className={`text-xs sm:text-sm ${item.isComplimentary ? "line-through text-slate-500" : "text-slate-400"}`}
                           >
-                            {item.menuItem.price.toFixed(2)} €
+                            {item.menuItem?.price.toFixed(2) || "0.00"} €
                           </p>
                           {item.isComplimentary && item.complimentaryReason && (
                             <p className="text-xs text-green-400 italic mt-1">{item.complimentaryReason}</p>
@@ -659,7 +778,7 @@ export default function OrderPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => removeFromCart(item.menuItem.id)}
+                            onClick={() => removeFromCart(item.id)}
                             className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700"
                           >
                             <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -670,7 +789,7 @@ export default function OrderPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => addToCart(item.menuItem)}
+                            onClick={() => item.menuItem && addToCart(item.menuItem)}
                             className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700"
                           >
                             <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -681,7 +800,7 @@ export default function OrderPage() {
                         <Button
                           size="sm"
                           variant={item.status === "to_follow_1" || item.status === "to_follow_2" ? "default" : "outline"}
-                          onClick={() => toggleToFollow(item.menuItem.id)}
+                          onClick={() => toggleToFollow(item.id)}
                           className={
                             item.status === "to_follow_1" || item.status === "to_follow_2"
                               ? "bg-yellow-600 hover:bg-yellow-700 text-white text-xs"
@@ -694,7 +813,7 @@ export default function OrderPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => openNotesDialog(item.menuItem.id)}
+                          onClick={() => openNotesDialog(item.id)}
                           className="bg-slate-800 border-slate-700 text-xs"
                         >
                           Notes
@@ -702,7 +821,7 @@ export default function OrderPage() {
                         <Button
                           size="sm"
                           variant={item.isComplimentary ? "default" : "outline"}
-                          onClick={() => toggleComplimentary(item.menuItem.id, "cart")}
+                          onClick={() => toggleComplimentary(item.id, "cart")}
                           className={
                             item.isComplimentary
                               ? "bg-green-600 hover:bg-green-700 text-white text-xs"
@@ -800,7 +919,7 @@ export default function OrderPage() {
                     <div>Déjà commandé: {existingItems.reduce((sum, item) => sum + (item.is_complimentary ? 0 : item.price * item.quantity), 0).toFixed(2)} €</div>
                   )}
                   {cart.length > 0 && (
-                    <div>Plats en attente: {cart.reduce((sum, item) => sum + (item.isComplimentary ? 0 : item.menuItem.price * item.quantity), 0).toFixed(2)} €</div>
+                    <div>Plats en attente: {cart.reduce((sum, item) => sum + (item.isComplimentary || !item.menuItem ? 0 : item.menuItem.price * item.quantity), 0).toFixed(2)} €</div>
                   )}
                   {supplements.length > 0 && (
                     <div>Suppléments: {supplements.reduce((sum, sup) => sum + (sup.isComplimentary ? 0 : sup.amount), 0).toFixed(2)} €</div>

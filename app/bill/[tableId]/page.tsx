@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, CreditCard, Banknote, Printer, Users, CheckCircle, Gift } from "lucide-react"
+import { ArrowLeft, CreditCard, Banknote, Printer, Users, CheckCircle, Gift, Plus, Minus } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -42,6 +42,21 @@ export default function BillPage() {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false)
   const [customAmount, setCustomAmount] = useState("")
   const [showCustomAmount, setShowCustomAmount] = useState(false)
+  const [offerDialog, setOfferDialog] = useState<{
+    open: boolean
+    itemId: string | null
+    itemName: string
+    maxQuantity: number
+    itemPrice: number
+  }>({
+    open: false,
+    itemId: null,
+    itemName: "",
+    maxQuantity: 0,
+    itemPrice: 0,
+  })
+  const [offerQuantity, setOfferQuantity] = useState(1)
+  const [complimentaryReason, setComplimentaryReason] = useState("")
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -253,6 +268,83 @@ export default function BillPage() {
     }
   }
 
+  const handleOfferPartial = (itemId: string, itemName: string, maxQuantity: number, itemPrice: number) => {
+    // Si c'est un article simple (maxQuantity = 1), offrir directement sans dialog
+    if (maxQuantity === 1) {
+      handleSaveOffer(itemId, 1, itemName)
+      return
+    }
+
+    // Pour les articles multiples, ouvrir le dialog
+    setOfferDialog({
+      open: true,
+      itemId,
+      itemName,
+      maxQuantity,
+      itemPrice,
+    })
+    setOfferQuantity(1)
+    setComplimentaryReason("")
+  }
+
+  const handleSaveOffer = async (itemId?: string, quantity?: number, itemName?: string) => {
+    const targetItemId = itemId || offerDialog.itemId
+    const targetQuantity = quantity || offerQuantity
+    const targetItemName = itemName || offerDialog.itemName
+
+    if (!targetItemId || !user) return
+
+    try {
+      const response = await fetch("/api/order-items/split", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId: targetItemId,
+          offerQuantity: targetQuantity,
+          serverId: user.id,
+          complimentaryReason: quantity === 1 ? "Offert à l'addition" : complimentaryReason || "Offert à l'addition",
+        }),
+      })
+
+      if (response.ok) {
+        setOfferDialog({ open: false, itemId: null, itemName: "", maxQuantity: 0, itemPrice: 0 })
+        await fetchData()
+      } else {
+        const error = await response.json()
+        alert(error.error || "Erreur lors de l'offre")
+      }
+    } catch (error) {
+      console.error("[v0] Error offering item:", error)
+      alert("Erreur lors de l'offre")
+    }
+  }
+
+  const handleCancelOffer = async (originalItemId: string, complimentaryItemId: string) => {
+    if (!confirm("Annuler l'offre ? Cet article redeviendra payant.")) return
+
+    try {
+      // Pour un article simple, les deux IDs sont les mêmes
+      const response = await fetch("/api/order-items/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          originalItemId,
+          complimentaryItemId,
+        }),
+      })
+
+      if (response.ok) {
+        await fetchData()
+      } else {
+        const error = await response.json()
+        alert(error.error || "Erreur lors de l'annulation de l'offre")
+      }
+    } catch (error) {
+      console.error("[v0] Error cancelling offer:", error)
+      alert("Erreur lors de l'annulation de l'offre")
+    }
+  }
+
   const printBill = () => {
     const printWindow = window.open("", "_blank")
     if (printWindow) {
@@ -441,6 +533,46 @@ export default function BillPage() {
                           <p className="text-xs sm:text-sm text-green-400">
                             Reste: {(item.price * remainingQty).toFixed(2)} €
                           </p>
+                        )}
+                        {/* Bouton Offrir pour les articles payants avec quantité restante */}
+                        {!item.is_complimentary && remainingQty > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOfferPartial(item.id, item.menu_item?.name || "", remainingQty, item.price)}
+                            className="bg-green-600 hover:bg-green-700 border-green-500 text-white h-6 w-6 p-0 mt-1"
+                            title={`Offrir une partie (${remainingQty} disponible${remainingQty > 1 ? "s" : ""})`}
+                          >
+                            <Gift className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {/* Bouton Annuler offre pour les articles offerts */}
+                        {item.is_complimentary && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              // Pour un article simple, utiliser le même ID
+                              // Pour un article split, trouver l'original
+                              const originalItem = items.find(i => 
+                                !i.is_complimentary && 
+                                i.menu_item_id === item.menu_item_id && 
+                                i.id !== item.id
+                              )
+                              
+                              if (originalItem) {
+                                // Cas split : fusionner les deux items
+                                handleCancelOffer(originalItem.id, item.id)
+                              } else {
+                                // Cas simple : juste dé-marquer comme offert
+                                handleCancelOffer(item.id, item.id)
+                              }
+                            }}
+                            className="bg-orange-600 hover:bg-orange-700 border-orange-500 text-white h-6 w-6 p-0 mt-1"
+                            title="Annuler l'offre"
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -731,6 +863,97 @@ export default function BillPage() {
             <p className="text-lg">La commande a été entièrement réglée.</p>
             <p className="text-slate-400 mt-2">Redirection vers le plan de salle...</p>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog pour offrir des articles */}
+      <Dialog open={offerDialog.open} onOpenChange={(open) => setOfferDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg flex items-center gap-2">
+              <Gift className="h-4 w-4 sm:h-5 sm:w-5" />
+              Offrir une partie de l'article
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-slate-300 mb-2">
+                Article: <span className="font-semibold text-white">{offerDialog.itemName}</span>
+              </p>
+              <p className="text-xs text-slate-400">
+                Maximum disponible: {offerDialog.maxQuantity} article{offerDialog.maxQuantity > 1 ? "s" : ""}
+              </p>
+            </div>
+            
+            <div>
+              <Label className="text-sm">Quantité à offrir</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setOfferQuantity(Math.max(1, offerQuantity - 1))}
+                  disabled={offerQuantity <= 1}
+                  className="bg-slate-700 border-slate-600 h-8 w-8 p-0"
+                >
+                  <Minus className="h-3 w-3" />
+                </Button>
+                <Input
+                  type="number"
+                  min="1"
+                  max={offerDialog.maxQuantity}
+                  value={offerQuantity}
+                  onChange={(e) => setOfferQuantity(Math.min(offerDialog.maxQuantity, Math.max(1, Number.parseInt(e.target.value) || 1)))}
+                  className="bg-slate-700 border-slate-600 text-white text-center w-16 h-8"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setOfferQuantity(Math.min(offerDialog.maxQuantity, offerQuantity + 1))}
+                  disabled={offerQuantity >= offerDialog.maxQuantity}
+                  className="bg-slate-700 border-slate-600 h-8 w-8 p-0"
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+                <span className="text-xs text-slate-400">/ {offerDialog.maxQuantity}</span>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-sm">Raison (optionnel)</Label>
+              <Input
+                value={complimentaryReason}
+                onChange={(e) => setComplimentaryReason(e.target.value)}
+                placeholder="Ex: Service client, erreur cuisine..."
+                className="bg-slate-700 border-slate-600 text-white text-sm mt-1"
+              />
+            </div>
+
+            <div className="bg-slate-900 p-3 rounded-lg">
+              <p className="text-xs text-slate-400">
+                <span className="font-semibold text-green-400">{offerQuantity}</span> article{offerQuantity > 1 ? "s" : ""} sera/seront offert{offerQuantity > 1 ? "s" : ""}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Valeur: {(offerQuantity * offerDialog.itemPrice).toFixed(2)} €
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setOfferDialog({ open: false, itemId: null, itemName: "", maxQuantity: 0, itemPrice: 0 })}
+              className="bg-slate-700 border-slate-600"
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={() => handleSaveOffer()}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Gift className="h-3 w-3 mr-2" />
+              Offrir {offerQuantity} article{offerQuantity > 1 ? "s" : ""}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

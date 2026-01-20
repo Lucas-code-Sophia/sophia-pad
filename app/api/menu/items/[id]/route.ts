@@ -5,15 +5,31 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   try {
     const { name, price, tax_rate, category, routing, out_of_stock } = await request.json()
     const supabase = await createClient()
+    const { id } = await params // ← CORRECTION Next.js 15
 
-    const updateData: any = { name, price, tax_rate, category, routing }
+    let categoryId = null
+    if (category) {
+      // Récupérer l'ID de la catégorie à partir du nom
+      const { data: catData } = await supabase
+        .from("menu_categories")
+        .select("id")
+        .eq("name", category)
+        .single()
+      
+      categoryId = catData?.id
+    }
+
+    const updateData: any = { name, price, tax_rate, routing }
+    if (categoryId) {
+      updateData.category_id = categoryId
+    }
 
     if (out_of_stock !== undefined) {
       updateData.out_of_stock = out_of_stock
       updateData.out_of_stock_date = out_of_stock ? new Date().toISOString().split("T")[0] : null
     }
 
-    const { error } = await supabase.from("menu_items").update(updateData).eq("id", params.id)
+    const { error } = await supabase.from("menu_items").update(updateData).eq("id", id) // ← UTILISE id
 
     if (error) {
       console.error("[v0] Error updating menu item:", error)
@@ -30,7 +46,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = await createClient()
-    const { error } = await supabase.from("menu_items").delete().eq("id", params.id)
+    const { id } = await params // ← CORRECTION Next.js 15
+    const { error } = await supabase.from("menu_items").delete().eq("id", id) // ← UTILISE id
 
     if (error) {
       console.error("[v0] Error deleting menu item:", error)
