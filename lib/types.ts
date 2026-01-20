@@ -96,6 +96,7 @@ export interface OrderItem {
   id: string
   order_id: string
   menu_item_id: string
+  cart_item_id?: string // ← NOUVEAU
   quantity: number
   price: number
   status: "pending" | "to_follow_1" | "to_follow_2" | "fired" | "completed"

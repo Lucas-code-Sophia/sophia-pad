@@ -31,10 +31,48 @@ export async function POST(request: NextRequest) {
       await supabase.from("tables").update({ status: "occupied" }).eq("id", tableId)
     }
 
+    // Supprimer d'abord les articles "à suivre" qui ne sont plus dans le panier
+    const currentFollowItems = await supabase
+      .from("order_items")
+      .select("cart_item_id")
+      .eq("order_id", currentOrderId)
+      .in("status", ["to_follow_1", "to_follow_2"])
+
+    if (currentFollowItems.data) {
+      const currentFollowIds = currentFollowItems.data.map((item: any) => item.cart_item_id)
+      const newFollowIds = items
+        .filter((item: any) => item.status === "to_follow_1" || item.status === "to_follow_2")
+        .map((item: any) => item.cartItemId)
+
+      // Supprimer les articles "à suivre" qui ne sont plus dans le panier
+      const idsToDelete = currentFollowIds.filter(id => !newFollowIds.includes(id))
+      if (idsToDelete.length > 0) {
+        await supabase
+          .from("order_items")
+          .delete()
+          .eq("order_id", currentOrderId)
+          .in("cart_item_id", idsToDelete)
+          .in("status", ["to_follow_1", "to_follow_2"])
+        
+        console.log("[v0] Deleted follow items:", idsToDelete)
+      }
+    }
+
+    // Supprimer les articles existants avec les mêmes cart_item_id pour éviter les doublons
+    const existingItemIds = items.map((item: any) => item.cartItemId)
+    if (existingItemIds.length > 0) {
+      await supabase
+        .from("order_items")
+        .delete()
+        .eq("order_id", currentOrderId)
+        .in("cart_item_id", existingItemIds)
+    }
+
     // Insert order items
     const orderItems = items.map((item: any) => ({
       order_id: currentOrderId,
       menu_item_id: item.menuItemId,
+      cart_item_id: item.cartItemId, // ← NOUVEAU
       quantity: item.quantity,
       price: item.price,
       status: item.status,
@@ -69,7 +107,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create kitchen tickets for fired items
+    // Create kitchen tickets ONLY for fired items (pas pour les "à suivre")
     const firedItems = items.filter((item: any) => item.status === "fired")
     if (firedItems.length > 0) {
       // Get table number

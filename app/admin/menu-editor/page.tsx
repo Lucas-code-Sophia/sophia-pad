@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle } from "lucide-react"
+import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle, CheckCircle, Settings, Edit } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import type { MenuItem } from "@/lib/types"
@@ -18,8 +18,12 @@ export default function MenuEditorPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [editDialog, setEditDialog] = useState(false)
+  const [categoryDialog, setCategoryDialog] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [isLoadingMenu, setIsLoadingMenu] = useState(true)
   const [newItem, setNewItem] = useState({
     name: "",
     price: "",
@@ -42,6 +46,7 @@ export default function MenuEditorPage() {
   }, [user])
 
   const fetchMenu = async () => {
+    setIsLoadingMenu(true)
     try {
       const [itemsRes, categoriesRes] = await Promise.all([fetch("/api/menu/items"), fetch("/api/menu/categories")])
 
@@ -56,6 +61,8 @@ export default function MenuEditorPage() {
       }
     } catch (error) {
       console.error("[v0] Error fetching menu:", error)
+    } finally {
+      setIsLoadingMenu(false)
     }
   }
 
@@ -86,6 +93,82 @@ export default function MenuEditorPage() {
       }
     } catch (error) {
       console.error("[v0] Error saving item:", error)
+    }
+  }
+
+  const handleSaveCategory = async () => {
+    if (!newCategoryName.trim()) return
+
+    try {
+      if (editingCategory) {
+        // Modification d'une catégorie existante
+        const response = await fetch(`/api/menu/categories/${encodeURIComponent(editingCategory)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newCategoryName.trim() }),
+        })
+
+        if (response.ok) {
+          setNewCategoryName("")
+          setEditingCategory(null)
+          fetchCategories()
+          fetchMenu() // Mettre à jour les articles qui utilisent cette catégorie
+        }
+      } else {
+        // Création d'une nouvelle catégorie
+        const response = await fetch("/api/menu/categories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newCategoryName.trim(), type: "food" }),
+        })
+
+        if (response.ok) {
+          setNewCategoryName("")
+          setEditingCategory(null)
+          fetchCategories()
+        }
+      }
+    } catch (error) {
+      console.error("[v0] Error saving category:", error)
+    }
+  }
+
+  const handleEditCategory = (categoryName: string) => {
+    setEditingCategory(categoryName)
+    setNewCategoryName(categoryName)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingCategory(null)
+    setNewCategoryName("")
+  }
+
+  const handleDeleteCategory = async (categoryName: string) => {
+    if (!confirm(`Supprimer la catégorie "${categoryName}" ? Les articles seront déplacés vers "Sans catégorie".`)) return
+
+    try {
+      const response = await fetch(`/api/menu/categories/${encodeURIComponent(categoryName)}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        fetchCategories()
+        fetchMenu()
+      }
+    } catch (error) {
+      console.error("[v0] Error deleting category:", error)
+    }
+  }
+
+  const fetchCategories = async () => {
+    try {
+      const categoriesRes = await fetch("/api/menu/categories")
+      if (categoriesRes.ok) {
+        const cats = await categoriesRes.json()
+        setCategories(cats.map((c: any) => c.name))
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching categories:", error)
     }
   }
 
@@ -159,17 +242,28 @@ export default function MenuEditorPage() {
           </Button>
           <h1 className="text-xl sm:text-3xl font-bold text-white">Éditeur de menu</h1>
         </div>
-        <Button
-          onClick={() => {
-            setEditingItem(null)
-            setEditDialog(true)
-          }}
-          size="sm"
-          className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
-        >
-          <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-          <span className="text-xs sm:text-sm">Ajouter un article</span>
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setCategoryDialog(true)}
+            variant="outline"
+            size="sm"
+            className="bg-slate-700 text-white border-slate-600"
+          >
+            <Settings className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="text-xs sm:text-sm">Catégories</span>
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingItem(null)
+              setEditDialog(true)
+            }}
+            size="sm"
+            className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
+          >
+            <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="text-xs sm:text-sm">Ajouter un article</span>
+          </Button>
+        </div>
       </div>
 
       <div className="mb-4 sm:mb-6">
@@ -227,12 +321,21 @@ export default function MenuEditorPage() {
                         onClick={() => toggleOutOfStock(item.id, item.out_of_stock || false)}
                         className={`${
                           item.out_of_stock
-                            ? "bg-red-900/50 hover:bg-red-900/70 border-red-700 text-red-300"
-                            : "bg-orange-900/30 hover:bg-orange-900/50 border-orange-700 text-orange-300"
-                        } h-8 w-8 sm:h-9 sm:w-9 p-0`}
-                        title={item.out_of_stock ? "Retirer la rupture" : "Marquer en rupture"}
+                            ? "bg-green-600 hover:bg-green-700 border-green-500 text-white"
+                            : "bg-orange-600 hover:bg-orange-700 border-orange-500 text-white"
+                        } px-3 py-1.5 text-xs sm:text-sm font-medium`}
                       >
-                        <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4" />
+                        {item.out_of_stock ? (
+                          <>
+                            <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                            Remettre en stock
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                            Mettre en rupture
+                          </>
+                        )}
                       </Button>
                       <Button
                         size="sm"
@@ -260,11 +363,19 @@ export default function MenuEditorPage() {
             </CardContent>
           </Card>
         ))}
-        {Object.keys(groupedItems).length === 0 && (
+        {Object.keys(groupedItems).length === 0 && !isLoadingMenu && (
           <Card className="bg-slate-800 border-slate-700 p-6 sm:p-8">
             <p className="text-center text-slate-400 text-sm">
               {searchQuery ? "Aucun résultat trouvé" : "Aucun article dans le menu"}
             </p>
+          </Card>
+        )}
+        {isLoadingMenu && (
+          <Card className="bg-slate-800 border-slate-700 p-6 sm:p-8">
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+              <span className="ml-3 text-slate-400 text-sm">Chargement du menu...</span>
+            </div>
           </Card>
         )}
       </div>
@@ -320,21 +431,22 @@ export default function MenuEditorPage() {
             </div>
             <div>
               <Label className="text-sm">Catégorie</Label>
-              <Input
+              <select
                 value={editingItem ? (editingItem.category ?? "") : (newItem.category ?? "")}
                 onChange={(e) =>
                   editingItem
                     ? setEditingItem({ ...editingItem, category: e.target.value })
                     : setNewItem({ ...newItem, category: e.target.value })
                 }
-                className="bg-slate-700 border-slate-600 text-sm"
-                list="categories"
-              />
-              <datalist id="categories">
+                className="w-full bg-slate-700 border-slate-600 rounded-md p-2 text-white text-sm"
+              >
+                <option value="">Sélectionner une catégorie</option>
                 {categories.map((cat) => (
-                  <option key={cat} value={cat} />
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </div>
             <div>
               <Label className="text-sm">Impression</Label>
@@ -371,6 +483,80 @@ export default function MenuEditorPage() {
             <Button onClick={handleSaveItem} className="w-full bg-blue-600 hover:bg-blue-700 text-sm">
               {editingItem ? "Enregistrer" : "Créer"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog pour la gestion des catégories */}
+      <Dialog open={categoryDialog} onOpenChange={setCategoryDialog}>
+        <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">Gérer les catégories</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm">
+                {editingCategory ? "Modifier la catégorie" : "Nouvelle catégorie"}
+              </Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="Nom de la catégorie"
+                  className="bg-slate-700 border-slate-600 text-sm flex-1"
+                />
+                <Button
+                  onClick={handleSaveCategory}
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-sm px-3"
+                >
+                  {editingCategory ? <CheckCircle className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                </Button>
+                {editingCategory && (
+                  <Button
+                    onClick={handleCancelEdit}
+                    size="sm"
+                    variant="outline"
+                    className="bg-slate-600 hover:bg-slate-500 text-sm px-3"
+                  >
+                    ✕
+                  </Button>
+                )}
+              </div>
+            </div>
+            
+            <div>
+              <Label className="text-sm">Catégories existantes</Label>
+              <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
+                {categories.length === 0 ? (
+                  <p className="text-slate-400 text-sm">Aucune catégorie</p>
+                ) : (
+                  categories.map((category) => (
+                    <div key={category} className="flex items-center justify-between p-2 bg-slate-700 rounded">
+                      <span className="text-sm text-white">{category}</span>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditCategory(category)}
+                          className="bg-slate-600 hover:bg-slate-500 border-slate-500 text-white h-6 w-6 p-0"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteCategory(category)}
+                          className="bg-red-900/30 hover:bg-red-900/50 border-red-700 text-red-400 h-6 w-6 p-0"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
