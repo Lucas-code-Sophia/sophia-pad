@@ -3,7 +3,6 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
-import { PWAInstall } from "@/components/pwa-install"
 
 export default function HomePage() {
   const { user, isLoading } = useAuth()
@@ -20,9 +19,8 @@ export default function HomePage() {
   }, [user, isLoading, router])
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900">
-      <div className="text-white text-xl">Chargement...</div>
-      <PWAInstall />
+    <div className="flex min-h-screen items-center justify-center bg-[#DAF6FC]">
+      <div className="text-[#081E3E] text-xl">Chargement...</div>
     </div>
   )
 }

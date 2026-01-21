@@ -276,8 +276,8 @@ export default function FloorPlanPage() {
   if (isLoading || loading) {
     return (
       <>
-      <div className="flex min-h-screen items-center justify-center bg-slate-900">
-        <div className="text-white text-xl">Chargement...</div>
+      <div className="flex min-h-screen items-center justify-center bg-[#DAF6FC]">
+        <div className="text-[#081E3E] text-xl">Chargement...</div>
       </div>
 
       {/* Inline Reservation Editor */}
@@ -499,15 +499,15 @@ export default function FloorPlanPage() {
   )
 
   return (
-    <div className="min-h-screen bg-slate-900 p-2 sm:p-4">
+    <div className="min-h-screen bg-[#DAF6FC] p-2 sm:p-4">
       {/* Header */}
       <div className="mb-4 sm:mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-white">
+          <div className="flex items-center gap-2 text-[#081E3E]">
             <User className="h-5 w-5 sm:h-6 sm:w-6" />
             <div>
               <p className="font-semibold text-sm sm:text-base">{user?.name}</p>
-              <p className="text-xs sm:text-sm text-slate-400">{user?.role === "manager" ? "Manager" : "Serveur"}</p>
+              <p className="text-xs sm:text-sm text-slate-600">{user?.role === "manager" ? "Manager" : "Serveur"}</p>
             </div>
           </div>
         </div>
@@ -678,23 +678,23 @@ export default function FloorPlanPage() {
 
       {/* Title */}
       <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">Plan de salle</h1>
-        <p className="text-xs sm:text-base text-slate-400">Sélectionnez une table pour prendre une commande</p>
+        <h1 className="text-xl sm:text-3xl font-bold text-[#081E3E] mb-1 sm:mb-2">Plan de salle</h1>
+        <p className="text-xs sm:text-base text-slate-600">Sélectionnez une table pour prendre une commande</p>
       </div>
 
       {/* Legend */}
       <div className="mb-4 sm:mb-6 flex gap-3 sm:gap-4">
         <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="h-3 w-3 sm:h-4 sm:w-4 rounded bg-green-600"></div>
-          <span className="text-xs sm:text-sm text-slate-300">Libre</span>
+          <span className="text-xs sm:text-sm text-slate-700">Libre</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="h-3 w-3 sm:h-4 sm:w-4 rounded bg-red-600"></div>
-          <span className="text-xs sm:text-sm text-slate-300">Occupée</span>
+          <span className="text-xs sm:text-sm text-slate-700">Occupée</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="h-3 w-3 sm:h-4 sm:w-4 rounded bg-yellow-600"></div>
-          <span className="text-xs sm:text-sm text-slate-300">Réservée</span>
+          <span className="text-xs sm:text-sm text-slate-700">Réservée</span>
         </div>
       </div>
 
@@ -703,7 +703,7 @@ export default function FloorPlanPage() {
         {/* Mes Tables - Section pour le serveur connecté */}
         {myTables.length > 0 && (
           <div>
-            <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">Mes tables</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Mes tables</h2>
             <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
               {myTables.map((table) => (
                 <TableButton key={table.id} table={table} />
@@ -714,7 +714,7 @@ export default function FloorPlanPage() {
 
         {/* Terrace Section - Top rows */}
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">Terrasse</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Terrasse</h2>
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
             {terraceTablesTop.slice(0, 24).map((table) => (
               <TableButton key={table.id} table={table} />
@@ -726,7 +726,7 @@ export default function FloorPlanPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
           {/* Canapé Section */}
           <div>
-            <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">Canapé</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Canapé</h2>
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {canapeeTables.map((table) => (
                 <TableButton key={table.id} table={table} aspectRatio={false} />
@@ -736,7 +736,7 @@ export default function FloorPlanPage() {
 
           {/* Terrace Middle */}
           <div>
-            <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3 sm:invisible">Terrasse (suite)</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3 sm:invisible">Terrasse (suite)</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               {terraceTablesMiddle.map((table) => (
                 <TableButton key={table.id} table={table} />
@@ -747,7 +747,7 @@ export default function FloorPlanPage() {
 
         {/* Interior Section */}
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-white mb-2 sm:mb-3">Intérieur</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Intérieur</h2>
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
             {interiorTables.map((table) => (
               <TableButton key={table.id} table={table} />

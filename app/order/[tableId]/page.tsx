@@ -1022,7 +1022,7 @@ export default function OrderPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => removeFromCart(item.cartItemId)}
-                            className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700"
+                            className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700 text-white"
                           >
                             <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
                           </Button>
@@ -1033,7 +1033,7 @@ export default function OrderPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => item.menuItem && addToCart(item.menuItem)}
-                            className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700"
+                            className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700 text-white"
                           >
                             <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
                           </Button>
@@ -1047,7 +1047,7 @@ export default function OrderPage() {
                           className={
                             item.status === "to_follow_1" || item.status === "to_follow_2"
                               ? "bg-yellow-600 hover:bg-yellow-700 text-white text-xs"
-                              : "bg-slate-800 border-slate-700 text-xs"
+                              : "bg-slate-800 border-slate-700 text-white text-xs"
                           }
                         >
                           <Clock className="h-3 w-3 mr-1" />
@@ -1057,7 +1057,7 @@ export default function OrderPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => openNotesDialog(item.cartItemId)}
-                          className="bg-slate-800 border-slate-700 text-xs"
+                          className="bg-slate-800 border-slate-700 text-white text-xs"
                         >
                           Notes
                         </Button>
@@ -1068,7 +1068,7 @@ export default function OrderPage() {
                           className={
                             item.isComplimentary
                               ? "bg-green-600 hover:bg-green-700 text-white text-xs"
-                              : "bg-slate-800 border-slate-700 text-xs"
+                              : "bg-slate-800 border-slate-700 text-white text-xs"
                           }
                         >
                           <Gift className="h-3 w-3 mr-1" />
@@ -1111,7 +1111,7 @@ export default function OrderPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => removeSupplement(supplement.id)}
-                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700 ml-2 flex-shrink-0"
+                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700 text-white ml-2 flex-shrink-0"
                         >
                           <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
                         </Button>
@@ -1124,7 +1124,7 @@ export default function OrderPage() {
                           className={
                             supplement.isComplimentary
                               ? "bg-green-600 hover:bg-green-700 text-white text-xs"
-                              : "bg-slate-800 border-slate-700 text-xs"
+                              : "bg-slate-800 border-slate-700 text-white text-xs"
                           }
                         >
                           <Gift className="h-3 w-3 mr-1" />

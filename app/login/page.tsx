@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { PWAInstall } from "@/components/pwa-install"
 
 export default function LoginPage() {
   const [pin, setPin] = useState("")
@@ -47,11 +46,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900 p-3 sm:p-4">
-      <Card className="w-full max-w-md bg-slate-800 border-slate-700">
-        <CardHeader className="text-center space-y-2 pb-4">
-          <CardTitle className="text-2xl sm:text-3xl font-bold text-white">SOPHIA PAD</CardTitle>
-          <CardDescription className="text-sm sm:text-base text-slate-400">
+    <div className="flex min-h-screen items-center justify-center bg-[#8FD6D8] p-3 sm:p-6">
+      <Card className="w-full max-w-md bg-[#DAF6FC] border-[#B5E7EE]">
+        <CardHeader className="text-center space-y-3 pb-4">
+          <div className="flex items-center justify-center">
+            <img src="/icon.png" alt="Logo restaurant" className="h-16 w-16 sm:h-20 sm:w-20" />
+          </div>
+          <CardTitle className="text-2xl sm:text-3xl font-bold text-[#081E3E]">SOPHIA PAD</CardTitle>
+          <CardDescription className="text-sm sm:text-base text-[#061E3E]">
             Entrez votre code PIN pour continuer
           </CardDescription>
         </CardHeader>
@@ -61,16 +63,16 @@ export default function LoginPage() {
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <div
                 key={i}
-                className="h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-slate-700 flex items-center justify-center border-2 border-slate-600"
+                className="h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-white/70 flex items-center justify-center border-2 border-[#B5E7EE]"
               >
                 <div
-                  className={`h-3 w-3 sm:h-4 sm:w-4 rounded-full ${i < pin.length ? "bg-blue-500" : "bg-slate-600"}`}
+                  className={`h-3 w-3 sm:h-4 sm:w-4 rounded-full ${i < pin.length ? "bg-[#081E3E]" : "bg-[#B5E7EE]"}`}
                 />
               </div>
             ))}
           </div>
 
-          {error && <p className="text-center text-sm text-red-400">{error}</p>}
+          {error && <p className="text-center text-sm text-red-600">{error}</p>}
 
           {/* Number Pad */}
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -79,7 +81,7 @@ export default function LoginPage() {
                 key={num}
                 onClick={() => handleNumberClick(num.toString())}
                 disabled={isLoading}
-                className="h-14 sm:h-16 text-xl sm:text-2xl font-semibold bg-slate-700 hover:bg-slate-600 text-white border-slate-600"
+                className="h-14 sm:h-16 text-xl sm:text-2xl font-semibold bg-white hover:bg-[#DAF6FC] text-[#081E3E] border-[#B5E7EE]"
                 variant="outline"
               >
                 {num}
@@ -88,7 +90,7 @@ export default function LoginPage() {
             <Button
               onClick={handleClear}
               disabled={isLoading}
-              className="h-14 sm:h-16 text-base sm:text-lg font-semibold bg-slate-700 hover:bg-slate-600 text-white border-slate-600"
+              className="h-14 sm:h-16 text-base sm:text-lg font-semibold bg-white hover:bg-[#DAF6FC] text-[#081E3E] border-[#B5E7EE]"
               variant="outline"
             >
               Effacer
@@ -96,7 +98,7 @@ export default function LoginPage() {
             <Button
               onClick={() => handleNumberClick("0")}
               disabled={isLoading}
-              className="h-14 sm:h-16 text-xl sm:text-2xl font-semibold bg-slate-700 hover:bg-slate-600 text-white border-slate-600"
+              className="h-14 sm:h-16 text-xl sm:text-2xl font-semibold bg-white hover:bg-[#DAF6FC] text-[#081E3E] border-[#B5E7EE]"
               variant="outline"
             >
               0
@@ -104,14 +106,13 @@ export default function LoginPage() {
             <Button
               onClick={handleSubmit}
               disabled={isLoading || pin.length !== 6}
-              className="h-14 sm:h-16 text-base sm:text-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+              className="h-14 sm:h-16 text-base sm:text-lg font-semibold bg-[#081E3E] hover:bg-[#061E3E] text-[#DAF6FC]"
             >
               OK
             </Button>
           </div>
         </CardContent>
       </Card>
-      <PWAInstall />
     </div>
   )
 }
