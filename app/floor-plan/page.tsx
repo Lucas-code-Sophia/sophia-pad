@@ -181,6 +181,7 @@ export default function FloorPlanPage() {
         const data: Reservation[] = await response.json()
         const map: Record<string, Reservation[]> = {}
         for (const r of data) {
+          if (r.status !== "confirmed") continue
           if (!map[r.table_id]) map[r.table_id] = []
           map[r.table_id].push(r)
         }
@@ -241,6 +242,13 @@ export default function FloorPlanPage() {
         setReservationLoading(false)
       }
     }
+  }
+
+  const handleAccessReservedTable = () => {
+    const targetTableId = reservationTableId || reservationEdit?.table_id
+    if (!targetTableId) return
+    setShowReservationEditor(false)
+    router.push(`/order/${targetTableId}`)
   }
 
   const handleLogout = () => {
@@ -324,6 +332,12 @@ export default function FloorPlanPage() {
             <div className="py-6 text-center text-slate-400 text-sm">Aucune réservation confirmée trouvée pour cette table.</div>
           ) : (
             <div className="space-y-3">
+              <Button
+                onClick={handleAccessReservedTable}
+                className="w-full bg-orange-600 hover:bg-orange-700 text-xs sm:text-sm"
+              >
+                Accéder à la table malgré la/les réservations
+              </Button>
               <div>
                 <Label className="text-sm">Nom</Label>
                 <Input
