@@ -39,6 +39,8 @@ export default function BillPage() {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash")
   const [cashGiven, setCashGiven] = useState("")
   const [tipAmount, setTipAmount] = useState("")
+  const [cardTipDialog, setCardTipDialog] = useState(false)
+  const [cardTipDraft, setCardTipDraft] = useState("")
   const [paidAmount, setPaidAmount] = useState(0)
   const [paymentsCount, setPaymentsCount] = useState(0)
   const [showSuccessDialog, setShowSuccessDialog] = useState(false)
@@ -230,7 +232,7 @@ export default function BillPage() {
   const handlePayment = async () => {
     try {
       const amount = calculateSplitAmount()
-      const tipValue = paymentMethod === "cash" ? Math.max(0, Number.parseFloat(tipAmount) || 0) : 0
+      const tipValue = Math.max(0, Number.parseFloat(tipAmount) || 0)
       const recordedBy = user?.id || null
 
       const itemQuantities = splitMode === "items" ? Object.fromEntries(selectedItemQuantities) : null
@@ -258,6 +260,7 @@ export default function BillPage() {
         setShowCustomAmount(false)
         setCashGiven("")
         setTipAmount("")
+        setCardTipDraft("")
 
         if (result.isFullyPaid) {
           localStorage.removeItem(PAYMENT_STATE_KEY + tableId)
@@ -442,9 +445,9 @@ export default function BillPage() {
   const remainingAmount = calculateRemainingAmount()
   const splitAmount = calculateSplitAmount()
   const cashGivenValue = Number.parseFloat(cashGiven) || 0
-  const tipValue = Number.parseFloat(tipAmount) || 0
-  const totalWithTip = splitAmount + (paymentMethod === "cash" ? Math.max(0, tipValue) : 0)
-  const changeDue = cashGivenValue - totalWithTip
+  const tipValue = Math.max(0, Number.parseFloat(tipAmount) || 0)
+  const totalWithTip = splitAmount + tipValue
+  const changeDue = paymentMethod === "cash" ? cashGivenValue - totalWithTip : 0
   const selectedItemsCount = Array.from(selectedItemQuantities.values()).reduce((sum, qty) => sum + qty, 0)
   const complimentaryCount =
     items.filter((item) => item.is_complimentary).length + supplements.filter((sup) => sup.is_complimentary).length
@@ -806,6 +809,7 @@ export default function BillPage() {
                   setPaymentDialog(true)
                   setCashGiven("")
                   setTipAmount("")
+                  setCardTipDraft("")
                 }}
                 className="w-full bg-green-600 hover:bg-green-700 text-white text-base sm:text-lg py-5 sm:py-6"
                 disabled={splitMode === "items" && selectedItemsCount === 0}
@@ -819,6 +823,7 @@ export default function BillPage() {
                   setPaymentDialog(true)
                   setCashGiven("")
                   setTipAmount("")
+                  setCardTipDraft("")
                 }}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white text-base sm:text-lg py-5 sm:py-6"
                 disabled={splitMode === "items" && selectedItemsCount === 0}
@@ -831,7 +836,15 @@ export default function BillPage() {
         </div>
       </div>
 
-      <Dialog open={paymentDialog} onOpenChange={setPaymentDialog}>
+      <Dialog
+        open={paymentDialog}
+        onOpenChange={(open) => {
+          setPaymentDialog(open)
+          if (!open) {
+            setCardTipDialog(false)
+          }
+        }}
+      >
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
           <DialogHeader>
             <DialogTitle>Confirmer le paiement</DialogTitle>
@@ -855,6 +868,30 @@ export default function BillPage() {
                 </Badge>
               </div>
             </div>
+            {paymentMethod === "card" && (
+              <div className="mt-6 space-y-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCardTipDraft(tipAmount || "")
+                    setCardTipDialog(true)
+                  }}
+                  className="bg-slate-700 border-slate-600 text-white"
+                >
+                  Tips
+                </Button>
+                <div className="bg-slate-900 p-3 rounded-lg space-y-2">
+                  <div className="flex justify-between text-sm text-slate-400">
+                    <span>Pourboire</span>
+                    <span>{tipValue.toFixed(2)} €</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-slate-400">
+                    <span>Total carte</span>
+                    <span>{totalWithTip.toFixed(2)} €</span>
+                  </div>
+                </div>
+              </div>
+            )}
             {paymentMethod === "cash" && (
               <div className="mt-6 space-y-4">
                 <div>
@@ -912,6 +949,47 @@ export default function BillPage() {
             </Button>
             <Button onClick={handlePayment} className="bg-blue-600 hover:bg-blue-700">
               Confirmer le paiement
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cardTipDialog} onOpenChange={setCardTipDialog}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tips CB</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="card-tip" className="text-slate-300">
+              Montant du pourboire
+            </Label>
+            <Input
+              id="card-tip"
+              type="number"
+              step="0.01"
+              min="0"
+              value={cardTipDraft}
+              onChange={(e) => setCardTipDraft(e.target.value)}
+              placeholder="0.00"
+              className="mt-2 bg-slate-900 border-slate-700 text-white"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCardTipDialog(false)}
+              className="bg-slate-700 border-slate-600"
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={() => {
+                setTipAmount(cardTipDraft)
+                setCardTipDialog(false)
+              }}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Valider
             </Button>
           </DialogFooter>
         </DialogContent>

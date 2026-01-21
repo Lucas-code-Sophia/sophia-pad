@@ -35,6 +35,18 @@ export async function POST(request: NextRequest) {
         opened_by_name: server?.name || null
       }).eq("id", tableId)
     }
+    else {
+      // Ensure table is marked occupied if items are added to an existing order
+      const { data: tableData } = await supabase.from("tables").select("status").eq("id", tableId).single()
+      if (tableData?.status !== "occupied") {
+        const { data: server } = await supabase.from("users").select("name").eq("id", serverId).single()
+        await supabase.from("tables").update({
+          status: "occupied",
+          opened_by: serverId,
+          opened_by_name: server?.name || null
+        }).eq("id", tableId)
+      }
+    }
 
     // Gérer les articles existants et nouveaux séparément
     const existingItems = items.filter((item: any) => !item.cartItemId.startsWith('temp-'))

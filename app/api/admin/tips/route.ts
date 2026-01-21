@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 interface Payment {
   tip_amount: number | null
   created_at: string
+  payment_method?: "cash" | "card" | "other"
   recorded_by?: string | null
   orders: {
     table_id: string
@@ -20,6 +21,14 @@ interface DailyBreakdown {
   date: string
   amount: number
   tables: Set<string>
+}
+
+const getIsoWeekNumber = (date: Date) => {
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNumber = target.getUTCDay() || 7
+  target.setUTCDate(target.getUTCDate() + 4 - dayNumber)
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1))
+  return Math.ceil(((target.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
 }
 
 export async function GET(request: Request) {
@@ -59,12 +68,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Invalid week parameter" }, { status: 400 })
     }
 
+    const weekStartStr = weekStart.toISOString().split("T")[0]
+    const weekEndStr = weekEnd.toISOString().split("T")[0]
+    const weekNumber = getIsoWeekNumber(weekStart)
+
     // Récupérer les paiements avec des pourboires
     const { data: payments, error: paymentsError } = await supabase
       .from("payments")
       .select(`
         tip_amount,
         created_at,
+        payment_method,
         recorded_by,
         orders!inner(
           table_id,
@@ -87,10 +101,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Failed to fetch tips" }, { status: 500 })
     }
 
+    const paymentRows = payments || []
+
     // Calculer les statistiques
-    const weeklyTotal = payments.reduce((sum: number, payment: any) => sum + (payment.tip_amount || 0), 0)
-    const uniqueTables = new Set(payments.map((p: any) => p.orders?.table_id).filter(Boolean)).size
+    const weeklyTotal = paymentRows.reduce((sum: number, payment: any) => sum + (payment.tip_amount || 0), 0)
+    const uniqueTables = new Set(paymentRows.map((p: any) => p.orders?.table_id).filter(Boolean)).size
     const averagePerTable = uniqueTables > 0 ? weeklyTotal / uniqueTables : 0
+    const totalCash = paymentRows.reduce(
+      (sum: number, payment: Payment) => sum + (payment.payment_method === "cash" ? payment.tip_amount || 0 : 0),
+      0,
+    )
+    const totalCard = paymentRows.reduce(
+      (sum: number, payment: Payment) => sum + (payment.payment_method === "card" ? payment.tip_amount || 0 : 0),
+      0,
+    )
 
     // Récupérer les données de la semaine dernière pour comparaison
     let lastWeekTotal = 0
@@ -115,7 +139,7 @@ export async function GET(request: Request) {
 
     // Grouper par jour
     const dailyBreakdown: any[] = []
-    payments.forEach((payment: Payment) => {
+    paymentRows.forEach((payment: Payment) => {
       const date = new Date(payment.created_at).toLocaleDateString('fr-FR', {
         weekday: 'long',
         month: 'short',
@@ -163,15 +187,37 @@ export async function GET(request: Request) {
       servers: day.servers,
     }))
 
-    const recentEntries = payments
+    const recentEntries = paymentRows
       .map((payment: Payment) => ({
         created_at: payment.created_at,
         amount: payment.tip_amount || 0,
+        payment_method: payment.payment_method || "other",
         table_number: payment.orders?.tables?.table_number || "",
         server_name: payment.users?.name || "Inconnu",
       }))
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
       .slice(0, 25)
+
+    const { data: settlement } = await supabase
+      .from("tip_settlements")
+      .select(`
+        id,
+        week_start,
+        week_end,
+        total_tips,
+        total_cash,
+        total_card,
+        status,
+        settled_at,
+        tip_settlement_lines(
+          id,
+          employee_name,
+          services_count,
+          amount
+        )
+      `)
+      .eq("week_start", weekStartStr)
+      .maybeSingle()
 
     return NextResponse.json({
       weeklyTotal,
@@ -179,8 +225,14 @@ export async function GET(request: Request) {
       tablesServed: uniqueTables,
       weeklyChange,
       totalTips,
+      totalCash,
+      totalCard,
+      weekStart: weekStartStr,
+      weekEnd: weekEndStr,
+      weekNumber,
       dailyBreakdown: dailyBreakdownForJson,
       recentEntries,
+      settlement,
     })
 
   } catch (error) {

@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+export const dynamic = "force-dynamic"
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ tableId: string }> }) {
   try {
     const { tableId } = await params
@@ -36,7 +38,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Failed to fetch order items" }, { status: 500 })
     }
 
-    return NextResponse.json({ order, items })
+    return NextResponse.json(
+      { order, items },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      },
+    )
   } catch (error) {
     console.error("[v0] Error in order API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

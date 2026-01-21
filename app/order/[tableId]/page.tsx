@@ -116,13 +116,13 @@ export default function OrderPage() {
           const menuItem = menuItems.find((m: MenuItem) => m.id === item.menu_item_id)
           return {
             id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            cartItemId: item.id,
+            cartItemId: item.id as string,
             menuItem: menuItem || null,
-            quantity: item.quantity,
+            quantity: item.quantity as number,
             status: item.status as CartItem['status'],
-            notes: item.notes,
-            isComplimentary: item.is_complimentary,
-            complimentaryReason: item.complimentary_reason,
+            notes: item.notes as string | undefined,
+            isComplimentary: item.is_complimentary as boolean,
+            complimentaryReason: item.complimentary_reason as string | undefined,
           }
         }
 
@@ -183,7 +183,7 @@ export default function OrderPage() {
         setMenuItems(itemsData)
         
         // Maintenant que menuItems est chargé, fetch les orders
-        const orderRes = await fetch(`/api/orders/table/${tableId}`)
+        const orderRes = await fetch(`/api/orders/table/${tableId}`, { cache: "no-store" })
         if (orderRes.ok) {
           const orderData = await orderRes.json()
           if (orderData) {
@@ -213,8 +213,6 @@ export default function OrderPage() {
               }
             })
             
-            // Vider d'abord le panier, puis mettre tous les articles non envoyés
-            setCart([])
             setCart(cartItems)
             setExistingItems(firedItems)
             
@@ -268,7 +266,7 @@ export default function OrderPage() {
         })
 
         if (response.ok) {
-          // Plus besoin de fetchData() - Realtime gère la mise à jour
+          await fetchData()
         }
         return
       }
@@ -298,7 +296,7 @@ export default function OrderPage() {
       })
 
       if (response.ok) {
-        // Plus besoin de fetchData() - Realtime gère la mise à jour
+        await fetchData()
       }
     } catch (error) {
       console.error("[v0] Error adding item to cart:", error)
@@ -797,6 +795,24 @@ export default function OrderPage() {
     }
   }
 
+  const handleSetTableAvailable = async () => {
+    try {
+      const res = await fetch("/api/orders/close-empty", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tableId }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        alert(err?.error || "Impossible de libérer la table")
+        return
+      }
+      router.push("/floor-plan")
+    } catch (error) {
+      alert("Erreur lors de la libération de la table")
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 p-2 sm:p-4">
       <OfflineIndicator />
@@ -816,15 +832,32 @@ export default function OrderPage() {
           <h1 className="text-lg sm:text-2xl font-bold text-white">Table {table?.table_number}</h1>
           <p className="text-xs sm:text-sm text-slate-400">{table?.seats} couverts</p>
         </div>
-        <Button
-          onClick={handleBillClick}
-          variant="outline"
-          size="sm"
-          className="bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
-          disabled={!currentOrder || existingItems.length === 0}
-        >
-          <span className="text-xs sm:text-sm">Addition</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          {!loading &&
+            currentOrder?.id &&
+            table?.status === "occupied" &&
+            cart.length === 0 &&
+            existingItems.length === 0 &&
+            supplements.length === 0 && (
+              <Button
+                onClick={handleSetTableAvailable}
+                variant="outline"
+                size="sm"
+                className="bg-amber-600 text-white border-amber-700 hover:bg-amber-700"
+              >
+                <span className="text-xs sm:text-sm">Remettre la table disponible</span>
+              </Button>
+            )}
+          <Button
+            onClick={handleBillClick}
+            variant="outline"
+            size="sm"
+            className="bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
+            disabled={!currentOrder || existingItems.length === 0}
+          >
+            <span className="text-xs sm:text-sm">Addition</span>
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4">
