@@ -93,7 +93,16 @@ export default function OrderPage() {
 
   useEffect(() => {
     if (user && tableId) {
-      fetchData()
+      const loadInitialData = async () => {
+        try {
+          setLoading(true)
+          await fetchBaseData()
+          await fetchOrderData()
+        } finally {
+          setLoading(false)
+        }
+      }
+      loadInitialData()
     }
   }, [user, tableId])
 
@@ -157,7 +166,41 @@ export default function OrderPage() {
     }
   }, [currentOrder?.id, menuItems])
 
-  const fetchData = async () => {
+  const fetchCategories = async () => {
+    const categoriesRes = await fetch("/api/menu/categories")
+    if (categoriesRes.ok) {
+      const categoriesData = await categoriesRes.json()
+      setCategories(categoriesData)
+      if (categoriesData.length > 0) {
+        setSelectedCategory((prev) => {
+          const stillExists = categoriesData.some((c: MenuCategory) => c.id === prev)
+          return prev && stillExists ? prev : categoriesData[0].id
+        })
+      }
+      return categoriesData
+    }
+    return []
+  }
+
+  const fetchMenuItems = async () => {
+    const itemsRes = await fetch("/api/menu/items")
+    if (itemsRes.ok) {
+      const itemsData = await itemsRes.json()
+      setMenuItems(itemsData)
+      return itemsData
+    }
+    return []
+  }
+
+  const fetchBaseData = async () => {
+    try {
+      await Promise.all([fetchCategories(), fetchMenuItems()])
+    } catch (error) {
+      console.error("[v0] Error fetching base data:", error)
+    }
+  }
+
+  const fetchOrderData = async () => {
     try {
       // Fetch table
       const tableRes = await fetch(`/api/tables/${tableId}`)
@@ -166,71 +209,54 @@ export default function OrderPage() {
         setTable(tableData)
       }
 
-      // Fetch categories
-      const categoriesRes = await fetch("/api/menu/categories")
-      if (categoriesRes.ok) {
-        const categoriesData = await categoriesRes.json()
-        setCategories(categoriesData)
-        if (categoriesData.length > 0) {
-          setSelectedCategory(categoriesData[0].id)
-        }
-      }
+      const currentItems = menuItems.length > 0 ? menuItems : await fetchMenuItems()
 
-      // Fetch menu items
-      const itemsRes = await fetch("/api/menu/items")
-      if (itemsRes.ok) {
-        const itemsData = await itemsRes.json()
-        setMenuItems(itemsData)
-        
-        // Maintenant que menuItems est chargé, fetch les orders
-        const orderRes = await fetch(`/api/orders/table/${tableId}`, { cache: "no-store" })
-        if (orderRes.ok) {
-          const orderData = await orderRes.json()
-          if (orderData) {
-            setCurrentOrder(orderData.order)
-            
-            // Organiser les articles selon leur statut
-            const pendingItems = orderData.items.filter((item: OrderItem) => item.status === "pending")
-            const toFollow1Items = orderData.items.filter((item: OrderItem) => item.status === "to_follow_1")
-            const toFollow2Items = orderData.items.filter((item: OrderItem) => item.status === "to_follow_2")
-            const firedItems = orderData.items.filter((item: OrderItem) => item.status === "fired" || item.status === "completed")
-            
-            // Mettre TOUS les articles non envoyés dans le panier (pending + to_follow)
-            const cartItems = [...pendingItems, ...toFollow1Items, ...toFollow2Items].map((item: OrderItem) => {
-              const menuItem = itemsData.find((m: MenuItem) => m.id === item.menu_item_id)
-              if (!menuItem) {
-                console.warn("[v0] MenuItem not found for item:", item.menu_item_id)
-              }
-              return {
-                id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                cartItemId: item.id, // Utiliser l'ID de la BDD comme référence unique
-                menuItem: menuItem || null,
-                quantity: item.quantity,
-                status: item.status as "pending" | "to_follow_1" | "to_follow_2",
-                notes: item.notes,
-                isComplimentary: item.is_complimentary,
-                complimentaryReason: item.complimentary_reason,
-              }
-            })
-            
-            setCart(cartItems)
-            setExistingItems(firedItems)
-            
-            console.log("[v0] Order loaded:", {
-              pending: pendingItems.length,
-              toFollow1: toFollow1Items.length,
-              toFollow2: toFollow2Items.length,
-              fired: firedItems.length,
-              cartItems: cartItems.length, // Maintenant inclut pending + to_follow
-              totalInCart: pendingItems.length + toFollow1Items.length + toFollow2Items.length
-            })
-          }
+      // Fetch order
+      const orderRes = await fetch(`/api/orders/table/${tableId}`, { cache: "no-store" })
+      if (orderRes.ok) {
+        const orderData = await orderRes.json()
+        if (orderData) {
+          setCurrentOrder(orderData.order)
+
+          // Organiser les articles selon leur statut
+          const pendingItems = orderData.items.filter((item: OrderItem) => item.status === "pending")
+          const toFollow1Items = orderData.items.filter((item: OrderItem) => item.status === "to_follow_1")
+          const toFollow2Items = orderData.items.filter((item: OrderItem) => item.status === "to_follow_2")
+          const firedItems = orderData.items.filter((item: OrderItem) => item.status === "fired" || item.status === "completed")
+
+          // Mettre TOUS les articles non envoyés dans le panier (pending + to_follow)
+          const cartItems = [...pendingItems, ...toFollow1Items, ...toFollow2Items].map((item: OrderItem) => {
+            const menuItem = currentItems.find((m: MenuItem) => m.id === item.menu_item_id)
+            if (!menuItem) {
+              console.warn("[v0] MenuItem not found for item:", item.menu_item_id)
+            }
+            return {
+              id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              cartItemId: item.id, // Utiliser l'ID de la BDD comme référence unique
+              menuItem: menuItem || null,
+              quantity: item.quantity,
+              status: item.status as "pending" | "to_follow_1" | "to_follow_2",
+              notes: item.notes,
+              isComplimentary: item.is_complimentary,
+              complimentaryReason: item.complimentary_reason,
+            }
+          })
+
+          setCart(cartItems)
+          setExistingItems(firedItems)
+
+          console.log("[v0] Order loaded:", {
+            pending: pendingItems.length,
+            toFollow1: toFollow1Items.length,
+            toFollow2: toFollow2Items.length,
+            fired: firedItems.length,
+            cartItems: cartItems.length, // Maintenant inclut pending + to_follow
+            totalInCart: pendingItems.length + toFollow1Items.length + toFollow2Items.length,
+          })
         }
       }
     } catch (error) {
-      console.error("[v0] Error fetching data:", error)
-    } finally {
-      setLoading(false)
+      console.error("[v0] Error fetching order data:", error)
     }
   }
 
@@ -266,7 +292,7 @@ export default function OrderPage() {
         })
 
         if (response.ok) {
-          await fetchData()
+          await fetchOrderData()
         }
         return
       }
@@ -296,7 +322,7 @@ export default function OrderPage() {
       })
 
       if (response.ok) {
-        await fetchData()
+        await fetchOrderData()
       }
     } catch (error) {
       console.error("[v0] Error adding item to cart:", error)
@@ -331,7 +357,7 @@ export default function OrderPage() {
         })
         
         if (response.ok) {
-          await fetchData()
+          await fetchOrderData()
         }
       } else {
         // Supprimer l'article
@@ -355,7 +381,7 @@ export default function OrderPage() {
         })
         
         if (response.ok) {
-          await fetchData()
+          await fetchOrderData()
         }
       }
     } catch (error) {
@@ -622,7 +648,7 @@ export default function OrderPage() {
 
       if (response.ok) {
         // On se resynchronise depuis la BDD (source de vérité)
-        await fetchData()
+        await fetchOrderData()
 
         // Vider les suppléments seulement s'ils ont été envoyés
         if (supplementsToSend.length > 0) {
@@ -703,7 +729,7 @@ export default function OrderPage() {
       })
 
       if (response.ok) {
-        await fetchData()
+        await fetchOrderData()
         alert(`${followNumber} envoyés à la cuisine !`)
       }
     } catch (error) {

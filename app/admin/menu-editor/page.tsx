@@ -7,16 +7,16 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle, CheckCircle, Settings, Edit } from "lucide-react"
+import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle, CheckCircle, Settings, Edit, ArrowUp, ArrowDown } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import type { MenuItem } from "@/lib/types"
+import type { MenuCategory, MenuItem } from "@/lib/types"
 
 export default function MenuEditorPage() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
-  const [categories, setCategories] = useState<string[]>([])
+  const [categories, setCategories] = useState<MenuCategory[]>([])
   const [editDialog, setEditDialog] = useState(false)
   const [categoryDialog, setCategoryDialog] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
@@ -57,7 +57,7 @@ export default function MenuEditorPage() {
 
       if (categoriesRes.ok) {
         const cats = await categoriesRes.json()
-        setCategories(cats.map((c: any) => c.name))
+        setCategories(cats)
       }
     } catch (error) {
       console.error("[v0] Error fetching menu:", error)
@@ -165,11 +165,46 @@ export default function MenuEditorPage() {
       const categoriesRes = await fetch("/api/menu/categories")
       if (categoriesRes.ok) {
         const cats = await categoriesRes.json()
-        setCategories(cats.map((c: any) => c.name))
+        setCategories(cats)
       }
     } catch (error) {
       console.error("[v0] Error fetching categories:", error)
     }
+  }
+
+  const saveCategoryOrder = async (nextCategories: MenuCategory[]) => {
+    try {
+      const response = await fetch("/api/menu/categories/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          order: nextCategories.map((cat, index) => ({
+            id: cat.id,
+            sort_order: index + 1,
+          })),
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to reorder categories")
+      }
+    } catch (error) {
+      console.error("[v0] Error reordering categories:", error)
+      fetchCategories()
+    }
+  }
+
+  const moveCategory = async (categoryId: string, direction: "up" | "down") => {
+    const index = categories.findIndex((cat) => cat.id === categoryId)
+    if (index === -1) return
+    const targetIndex = direction === "up" ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= categories.length) return
+
+    const next = [...categories]
+    ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
+    const reordered = next.map((cat, idx) => ({ ...cat, sort_order: idx + 1 }))
+    setCategories(reordered)
+    await saveCategoryOrder(reordered)
   }
 
   const handleDeleteItem = async (id: string) => {
@@ -442,8 +477,8 @@ export default function MenuEditorPage() {
               >
                 <option value="">Sélectionner une catégorie</option>
                 {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
+                  <option key={cat.id} value={cat.name}>
+                    {cat.name}
                   </option>
                 ))}
               </select>
@@ -531,14 +566,32 @@ export default function MenuEditorPage() {
                 {categories.length === 0 ? (
                   <p className="text-slate-400 text-sm">Aucune catégorie</p>
                 ) : (
-                  categories.map((category) => (
-                    <div key={category} className="flex items-center justify-between p-2 bg-slate-700 rounded">
-                      <span className="text-sm text-white">{category}</span>
+                  categories.map((category, index) => (
+                    <div key={category.id} className="flex items-center justify-between p-2 bg-slate-700 rounded">
+                      <span className="text-sm text-white">{category.name}</span>
                       <div className="flex gap-1">
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleEditCategory(category)}
+                          onClick={() => moveCategory(category.id, "up")}
+                          disabled={index === 0}
+                          className="bg-slate-600 hover:bg-slate-500 border-slate-500 text-white h-6 w-6 p-0 disabled:opacity-50"
+                        >
+                          <ArrowUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => moveCategory(category.id, "down")}
+                          disabled={index === categories.length - 1}
+                          className="bg-slate-600 hover:bg-slate-500 border-slate-500 text-white h-6 w-6 p-0 disabled:opacity-50"
+                        >
+                          <ArrowDown className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditCategory(category.name)}
                           className="bg-slate-600 hover:bg-slate-500 border-slate-500 text-white h-6 w-6 p-0"
                         >
                           <Edit className="h-3 w-3" />
@@ -546,7 +599,7 @@ export default function MenuEditorPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleDeleteCategory(category)}
+                          onClick={() => handleDeleteCategory(category.name)}
                           className="bg-red-900/30 hover:bg-red-900/50 border-red-700 text-red-400 h-6 w-6 p-0"
                         >
                           <Trash2 className="h-3 w-3" />
