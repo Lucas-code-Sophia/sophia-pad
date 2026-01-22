@@ -67,6 +67,10 @@ export default function OrderPage() {
   })
   const [tempNotes, setTempNotes] = useState("")
   const [supplementDialog, setSupplementDialog] = useState(false)
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+  const [transferTables, setTransferTables] = useState<Table[]>([])
+  const [transferLoading, setTransferLoading] = useState(false)
+  const [transferError, setTransferError] = useState<string | null>(null)
   const [supplementForm, setSupplementForm] = useState({
     name: "",
     amount: "",
@@ -257,6 +261,51 @@ export default function OrderPage() {
       }
     } catch (error) {
       console.error("[v0] Error fetching order data:", error)
+    }
+  }
+
+  const openTransferDialog = async () => {
+    setTransferDialogOpen(true)
+    setTransferLoading(true)
+    setTransferError(null)
+    try {
+      const res = await fetch(`/api/tables/available-transfer?fromTableId=${tableId}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error || "Chargement impossible")
+      }
+      const data = await res.json()
+      setTransferTables(data)
+    } catch (error) {
+      setTransferError(error instanceof Error ? error.message : "Erreur de chargement")
+    } finally {
+      setTransferLoading(false)
+    }
+  }
+
+  const transferOrderToTable = async (targetTableId: string) => {
+    if (!currentOrder?.id) return
+    try {
+      const response = await fetch("/api/orders/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: currentOrder.id,
+          fromTableId: tableId,
+          toTableId: targetTableId,
+          serverId: user?.id || "",
+        }),
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err?.error || "Transfert impossible")
+      }
+
+      setTransferDialogOpen(false)
+      router.push(`/order/${targetTableId}`)
+    } catch (error) {
+      setTransferError(error instanceof Error ? error.message : "Erreur de transfert")
     }
   }
 
@@ -859,6 +908,17 @@ export default function OrderPage() {
           <p className="text-xs sm:text-sm text-slate-400">{table?.seats} couverts</p>
         </div>
         <div className="flex items-center gap-2">
+          {currentOrder?.id && (
+            <Button
+              onClick={openTransferDialog}
+              variant="outline"
+              size="sm"
+              disabled={cart.length === 0 && existingItems.length === 0 && supplements.length === 0}
+              className="bg-slate-800 text-white border-slate-700 hover:bg-slate-700 disabled:opacity-60"
+            >
+              <span className="text-xs sm:text-sm">Changer la table</span>
+            </Button>
+          )}
           {!loading &&
             currentOrder?.id &&
             table?.status === "occupied" &&
@@ -1380,6 +1440,47 @@ export default function OrderPage() {
             </Button>
             <Button onClick={saveComplimentary} className="bg-green-600 hover:bg-green-700">
               Confirmer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Table Dialog */}
+      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Changer la table</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {transferLoading ? (
+              <p className="text-sm text-slate-300">Chargement des tables disponibles...</p>
+            ) : transferError ? (
+              <p className="text-sm text-red-300">{transferError}</p>
+            ) : transferTables.length === 0 ? (
+              <p className="text-sm text-slate-300">Aucune table disponible.</p>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {transferTables.map((t) => (
+                  <Button
+                    key={t.id}
+                    variant="outline"
+                    onClick={() => transferOrderToTable(t.id)}
+                    className="w-full justify-between bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                  >
+                    <span>Table {t.table_number}</span>
+                    <span className="text-xs text-slate-300">{t.seats} places</span>
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTransferDialogOpen(false)}
+              className="bg-slate-700 border-slate-600"
+            >
+              Fermer
             </Button>
           </DialogFooter>
         </DialogContent>
