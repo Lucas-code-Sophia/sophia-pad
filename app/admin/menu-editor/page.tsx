@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle, CheckCircle, Settings, Edit, ArrowUp, ArrowDown } from "lucide-react"
+import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle, CheckCircle, Settings, Edit, ArrowUp, ArrowDown, Palette } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import type { MenuCategory, MenuItem } from "@/lib/types"
+import { MENU_BUTTON_COLORS } from "@/lib/menu-colors"
 
 export default function MenuEditorPage() {
   const { user, isLoading } = useAuth()
@@ -19,6 +20,7 @@ export default function MenuEditorPage() {
   const [categories, setCategories] = useState<MenuCategory[]>([])
   const [editDialog, setEditDialog] = useState(false)
   const [categoryDialog, setCategoryDialog] = useState(false)
+  const [colorHelpDialog, setColorHelpDialog] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
@@ -31,6 +33,8 @@ export default function MenuEditorPage() {
     category: "",
     routing: "kitchen" as "kitchen" | "bar",
     out_of_stock: false,
+    button_color: "",
+    status: true,
   })
 
   useEffect(() => {
@@ -82,13 +86,15 @@ export default function MenuEditorPage() {
           category: itemData.category,
           routing: itemData.routing,
           out_of_stock: itemData.out_of_stock,
+          button_color: itemData.button_color || null,
+          status: itemData.status !== undefined ? itemData.status : true,
         }),
       })
 
       if (response.ok) {
         setEditDialog(false)
         setEditingItem(null)
-        setNewItem({ name: "", price: "", tax_rate: "20", category: "", routing: "kitchen", out_of_stock: false })
+        setNewItem({ name: "", price: "", tax_rate: "20", category: "", routing: "kitchen", out_of_stock: false, button_color: "", status: true })
         fetchMenu()
       }
     } catch (error) {
@@ -288,6 +294,15 @@ export default function MenuEditorPage() {
             <span className="text-xs sm:text-sm">Catégories</span>
           </Button>
           <Button
+            onClick={() => setColorHelpDialog(true)}
+            variant="outline"
+            size="sm"
+            className="bg-slate-700 text-white border-slate-600 px-2"
+            title="Couleurs disponibles"
+          >
+            <Palette className="h-3 w-3 sm:h-4 sm:w-4" />
+          </Button>
+          <Button
             onClick={() => {
               setEditingItem(null)
               setEditDialog(true)
@@ -332,12 +347,19 @@ export default function MenuEditorPage() {
                   <div
                     key={item.id}
                     className={`flex items-center justify-between p-2 sm:p-3 rounded gap-3 ${
-                      item.out_of_stock ? "bg-red-900/30 border-2 border-red-700" : "bg-slate-700"
+                      item.status === false
+                        ? "bg-slate-800/60 border border-slate-600 opacity-60"
+                        : item.out_of_stock
+                          ? "bg-red-900/30 border-2 border-red-700"
+                          : "bg-slate-700"
                     }`}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <div className="font-semibold text-white text-sm sm:text-base truncate">{item.name}</div>
+                        {item.status === false && (
+                          <Badge className="bg-slate-600 text-xs">Masqué</Badge>
+                        )}
                         {item.out_of_stock && (
                           <Badge className="bg-red-600 text-xs flex items-center gap-1">
                             <AlertCircle className="h-3 w-3" />
@@ -498,6 +520,40 @@ export default function MenuEditorPage() {
                 <option value="bar">Bar</option>
               </select>
             </div>
+            <div>
+              <Label className="text-sm">Couleur bouton</Label>
+              <select
+                value={editingItem ? (editingItem.button_color ?? "") : newItem.button_color}
+                onChange={(e) =>
+                  editingItem
+                    ? setEditingItem({ ...editingItem, button_color: e.target.value || null })
+                    : setNewItem({ ...newItem, button_color: e.target.value })
+                }
+                className="w-full bg-slate-700 border-slate-600 rounded-md p-2 text-white text-sm"
+              >
+                <option value="">Par défaut</option>
+                {MENU_BUTTON_COLORS.map((color) => (
+                  <option key={color.value} value={color.value}>
+                    {color.label} ({color.value})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label className="text-sm">Visible pour les serveurs</Label>
+              <select
+                value={editingItem ? ((editingItem as any).status ?? true ? "true" : "false") : newItem.status ? "true" : "false"}
+                onChange={(e) =>
+                  editingItem
+                    ? setEditingItem({ ...editingItem, status: e.target.value === "true" })
+                    : setNewItem({ ...newItem, status: e.target.value === "true" })
+                }
+                className="w-full bg-slate-700 border-slate-600 rounded-md p-2 text-white text-sm"
+              >
+                <option value="true">Oui</option>
+                <option value="false">Non</option>
+              </select>
+            </div>
             <div className="mt-4">
               <Label className="text-sm">État de stock</Label>
               <select
@@ -518,6 +574,28 @@ export default function MenuEditorPage() {
             <Button onClick={handleSaveItem} className="w-full bg-blue-600 hover:bg-blue-700 text-sm">
               {editingItem ? "Enregistrer" : "Créer"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={colorHelpDialog} onOpenChange={setColorHelpDialog}>
+        <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">Couleurs disponibles</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {MENU_BUTTON_COLORS.map((color) => (
+              <div key={color.value} className="flex items-center justify-between rounded bg-slate-700/60 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className={`h-4 w-4 rounded-full ${color.swatchClassName}`} />
+                  <span className="text-sm">{color.label}</span>
+                </div>
+                <span className="text-xs font-mono text-slate-300">{color.value}</span>
+              </div>
+            ))}
+            <p className="text-xs text-slate-400">
+              Utilise la valeur à droite dans le menu ou dans le CSV.
+            </p>
           </div>
         </DialogContent>
       </Dialog>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { normalizeMenuButtonColor } from "@/lib/menu-colors"
 
 export async function POST(request: Request) {
   try {
@@ -17,8 +18,16 @@ export async function POST(request: Request) {
     // Skip header row
     const dataLines = lines.slice(1)
 
+    const parseStatus = (rawStatus?: string) => {
+      if (!rawStatus) return true
+      const normalized = rawStatus.trim().toLowerCase()
+      if (["false", "0", "no", "non"].includes(normalized)) return false
+      if (["true", "1", "yes", "oui"].includes(normalized)) return true
+      return true
+    }
+
     for (const line of dataLines) {
-      const [name, price, taxRate, categoryName, routing] = line.split(",").map((s) => s.trim())
+      const [name, price, taxRate, categoryName, routing, buttonColor, status] = line.split(",").map((s) => s.trim())
 
       if (!name || !price || !categoryName || !routing) continue
 
@@ -38,14 +47,21 @@ export async function POST(request: Request) {
 
       if (category) {
         // Insert menu item
-        await supabase.from("menu_items").insert({
+        const newItem: Record<string, any> = {
           category_id: category.id,
           name,
           price: Number.parseFloat(price),
           tax_rate: Number.parseFloat(taxRate || "20"),
           type: routing === "bar" ? "drink" : "food",
           routing: routing as "kitchen" | "bar",
-        })
+          status: parseStatus(status),
+        }
+
+        if (buttonColor !== undefined) {
+          newItem.button_color = normalizeMenuButtonColor(buttonColor)
+        }
+
+        await supabase.from("menu_items").insert(newItem)
       }
     }
 

@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { normalizeMenuButtonColor } from "@/lib/menu-colors"
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { name, price, tax_rate, category, routing, out_of_stock } = await request.json()
+    const { name, price, tax_rate, category, routing, out_of_stock, button_color, status } = await request.json()
     const supabase = await createClient()
     const { id } = await params // ← CORRECTION Next.js 15
 
@@ -27,6 +28,14 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (out_of_stock !== undefined) {
       updateData.out_of_stock = out_of_stock
       updateData.out_of_stock_date = out_of_stock ? new Date().toISOString().split("T")[0] : null
+    }
+
+    if (button_color !== undefined) {
+      updateData.button_color = normalizeMenuButtonColor(button_color)
+    }
+
+    if (status !== undefined) {
+      updateData.status = Boolean(status)
     }
 
     const { error } = await supabase.from("menu_items").update(updateData).eq("id", id) // ← UTILISE id

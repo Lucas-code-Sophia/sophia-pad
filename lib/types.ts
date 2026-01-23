@@ -78,6 +78,8 @@ export interface MenuItem {
   type: "food" | "drink"
   tax_rate: number
   routing: "kitchen" | "bar"
+  status?: boolean
+  button_color?: string | null
   created_at: string
   out_of_stock?: boolean
   out_of_stock_date?: string

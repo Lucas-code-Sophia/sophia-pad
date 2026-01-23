@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { normalizeMenuButtonColor } from "@/lib/menu-colors"
 
 export async function GET() {
   try {
@@ -38,7 +39,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { name, price, tax_rate, category, routing, out_of_stock } = await request.json()
+    const { name, price, tax_rate, category, routing, out_of_stock, button_color, status } = await request.json()
     const supabase = await createClient()
 
     let categoryId = null
@@ -58,7 +59,12 @@ export async function POST(request: Request) {
       price: Number.parseFloat(price), 
       tax_rate: Number.parseFloat(tax_rate), 
       routing,
-      type: routing === "bar" ? "drink" : "food"
+      type: routing === "bar" ? "drink" : "food",
+      status: status === undefined ? true : Boolean(status),
+    }
+
+    if (button_color !== undefined) {
+      newItem.button_color = normalizeMenuButtonColor(button_color)
     }
     
     if (categoryId) {

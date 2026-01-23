@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useOfflineManager } from "@/lib/offline-manager"
 import { OfflineIndicator } from "@/components/offline-indicator"
+import { getMenuButtonColorClasses } from "@/lib/menu-colors"
 
 // Fonction pour générer un ID unique
 const generateUniqueId = (productName: string) => {
@@ -801,7 +802,7 @@ export default function OrderPage() {
     router.push("/floor-plan")
   }
 
-  const filteredItems = menuItems.filter((item) => item.category_id === selectedCategory)
+  const filteredItems = menuItems.filter((item) => item.category_id === selectedCategory && item.status !== false)
   const cartTotal =
     cart.reduce((sum, item) => sum + (item.isComplimentary || !item.menuItem ? 0 : item.menuItem.price * item.quantity), 0) +
     supplements.reduce((sum, sup) => sum + (sup.isComplimentary ? 0 : sup.amount), 0) +
@@ -974,6 +975,8 @@ export default function OrderPage() {
               const cartItem = cart.find((c) => c.menuItem?.id === item.id && c.status === "pending")
               const quantity = cartItem?.quantity || 0
               const isOutOfStock = item.out_of_stock
+              const colorClasses = !isOutOfStock ? getMenuButtonColorClasses(item.button_color) : ""
+              const isLightColor = !isOutOfStock && item.button_color === "white"
 
               return (
                 <Card
@@ -981,13 +984,17 @@ export default function OrderPage() {
                   className={`p-3 sm:p-4 transition-colors ${
                     isOutOfStock
                       ? "bg-red-900/30 border-2 border-red-700 opacity-60 cursor-not-allowed"
-                      : "bg-slate-800 border-slate-700 cursor-pointer hover:bg-slate-750"
+                      : `cursor-pointer ${colorClasses || "bg-slate-800 border-slate-700 hover:bg-slate-750"}`
                   }`}
                   onClick={() => !isOutOfStock && addToCart(item)}
                 >
                   <div className="text-center">
-                    <div className="font-semibold text-white text-sm sm:text-base mb-1 truncate">{item.name}</div>
-                    <div className="text-xs sm:text-sm text-slate-400 mb-2">{item.price.toFixed(2)} €</div>
+                    <div className={`font-semibold text-sm sm:text-base mb-1 truncate ${isLightColor ? "text-slate-900" : "text-white"}`}>
+                      {item.name}
+                    </div>
+                    <div className={`text-xs sm:text-sm mb-2 ${isLightColor ? "text-slate-600" : "text-slate-400"}`}>
+                      {item.price.toFixed(2)} €
+                    </div>
                     {isOutOfStock ? (
                       <div className="flex items-center justify-center gap-1 text-red-400">
                         <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4" />
