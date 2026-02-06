@@ -54,18 +54,24 @@ export async function POST(request: NextRequest) {
 
     // Mettre à jour les articles existants
     const updatePromises = existingItems.map(async (item: any) => {
+      const updatePayload: Record<string, any> = {
+        menu_item_id: item.menuItemId,
+        quantity: item.quantity,
+        price: item.price,
+        status: item.status,
+        notes: item.notes,
+        fired_at: item.status === "fired" ? new Date().toISOString() : null,
+        is_complimentary: item.isComplimentary || false,
+        complimentary_reason: item.complimentaryReason,
+      }
+
+      if (item.status !== "fired") {
+        updatePayload.printed_fired_at = null
+      }
+
       const { data, error } = await supabase
         .from("order_items")
-        .update({
-          menu_item_id: item.menuItemId,
-          quantity: item.quantity,
-          price: item.price,
-          status: item.status,
-          notes: item.notes,
-          fired_at: item.status === "fired" ? new Date().toISOString() : null,
-          is_complimentary: item.isComplimentary || false,
-          complimentary_reason: item.complimentaryReason,
-        })
+        .update(updatePayload)
         .eq("order_id", currentOrderId)
         .eq("id", item.cartItemId)
 
@@ -124,32 +130,73 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create kitchen tickets ONLY for fired items (pas pour les "à suivre")
+    // Create kitchen tickets for fired items (+ plan "à suivre" si non déjà imprimés)
     const firedItems = items.filter((item: any) => item.status === "fired")
     if (firedItems.length > 0) {
+      const includeFollowPlan = true
+
       // Get table number
       const { data: table } = await supabase.from("tables").select("table_number").eq("id", tableId).single()
 
+      const firedExistingIds = firedItems
+        .map((item: any) => item.cartItemId)
+        .filter((id: any) => typeof id === "string" && !id.startsWith("temp-"))
+
+      const firedExistingPrintData = firedExistingIds.length
+        ? (await supabase.from("order_items").select("id, printed_fired_at").in("id", firedExistingIds)).data || []
+        : []
+
+      const printableFiredIds = new Set(
+        firedExistingPrintData.filter((row: any) => !row.printed_fired_at).map((row: any) => row.id),
+      )
+
+      const firedItemsToPrint = firedItems.filter((item: any) => {
+        const id = item.cartItemId
+        if (typeof id !== "string") return true
+        if (id.startsWith("temp-")) return true
+        return printableFiredIds.has(id)
+      })
+
+      const followItemsToPrint = includeFollowPlan
+        ? (await supabase
+            .from("order_items")
+            .select("id, menu_item_id, quantity, notes, status")
+            .eq("order_id", currentOrderId)
+            .in("status", ["to_follow_1", "to_follow_2"])
+            .is("printed_plan_at", null)).data || []
+        : []
+
+      if (firedItemsToPrint.length === 0 && followItemsToPrint.length === 0) {
+        return NextResponse.json({ success: true, orderId: currentOrderId })
+      }
+
+      const menuItemIds = Array.from(
+        new Set([
+          ...firedItemsToPrint.map((i: any) => i.menuItemId),
+          ...followItemsToPrint.map((i: any) => i.menu_item_id),
+        ]),
+      )
+
       // Get menu items details
-      const { data: menuItems } = await supabase
-        .from("menu_items")
-        .select("*")
-        .in(
-          "id",
-          firedItems.map((i: any) => i.menuItemId),
-        )
+      const { data: menuItems } = await supabase.from("menu_items").select("*").in("id", menuItemIds)
 
       // Group by type (kitchen/bar)
       const kitchenItems: any[] = []
       const barItems: any[] = []
 
-      firedItems.forEach((item: any) => {
-        const menuItem = menuItems?.find((m) => m.id === item.menuItemId)
+      const pushTicketItem = (params: {
+        menuItemId: string
+        quantity: number
+        notes?: string
+        phase: "direct" | "to_follow_1" | "to_follow_2"
+      }) => {
+        const menuItem = menuItems?.find((m) => m.id === params.menuItemId)
         if (menuItem) {
           const ticketItem = {
             name: menuItem.name,
-            quantity: item.quantity,
-            notes: item.notes,
+            quantity: params.quantity,
+            notes: params.notes,
+            phase: params.phase,
           }
           if (menuItem.type === "food") {
             kitchenItems.push(ticketItem)
@@ -157,6 +204,25 @@ export async function POST(request: NextRequest) {
             barItems.push(ticketItem)
           }
         }
+      }
+
+      firedItemsToPrint.forEach((item: any) => {
+        pushTicketItem({
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+          notes: item.notes,
+          phase: "direct",
+        })
+      })
+
+      followItemsToPrint.forEach((item: any) => {
+        const phase = item.status === "to_follow_1" ? "to_follow_1" : "to_follow_2"
+        pushTicketItem({
+          menuItemId: item.menu_item_id,
+          quantity: item.quantity,
+          notes: item.notes,
+          phase,
+        })
       })
 
       // Create tickets
@@ -181,7 +247,38 @@ export async function POST(request: NextRequest) {
       }
 
       if (tickets.length > 0) {
-        await supabase.from("kitchen_tickets").insert(tickets)
+        const { error: ticketsError } = await supabase.from("kitchen_tickets").insert(tickets)
+        if (ticketsError) {
+          console.error("[v0] Error inserting kitchen tickets:", ticketsError)
+          return NextResponse.json({ error: "Failed to create tickets" }, { status: 500 })
+        }
+
+        const now = new Date().toISOString()
+
+        if (followItemsToPrint.length > 0) {
+          const followIds = followItemsToPrint.map((i: any) => i.id)
+          await supabase.from("order_items").update({ printed_plan_at: now }).in("id", followIds)
+        }
+
+        const firedExistingPrintedIds = firedItemsToPrint
+          .map((item: any) => item.cartItemId)
+          .filter((id: any) => typeof id === "string" && !id.startsWith("temp-"))
+
+        const firedTempPrintedIds = firedItemsToPrint
+          .map((item: any) => item.cartItemId)
+          .filter((id: any) => typeof id === "string" && id.startsWith("temp-"))
+
+        if (firedExistingPrintedIds.length > 0) {
+          await supabase.from("order_items").update({ printed_fired_at: now }).in("id", firedExistingPrintedIds)
+        }
+
+        if (firedTempPrintedIds.length > 0) {
+          await supabase
+            .from("order_items")
+            .update({ printed_fired_at: now })
+            .eq("order_id", currentOrderId)
+            .in("cart_item_id", firedTempPrintedIds)
+        }
       }
     }
 

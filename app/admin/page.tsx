@@ -20,6 +20,7 @@ import {
   BarChart3,
   Calendar,
   DollarSign,
+  LayoutGrid,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -437,6 +438,30 @@ export default function AdminPage() {
         </Card>
 
         <Card
+          className="bg-slate-800 border-slate-700 hover:border-sky-500 transition-colors cursor-pointer"
+          onClick={() => router.push("/admin/floor-plan-layout")}
+        >
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 sm:p-3 bg-sky-600 rounded-lg">
+                <LayoutGrid className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-white text-base sm:text-lg">Plan de salle</CardTitle>
+                <CardDescription className="text-slate-400 text-xs sm:text-sm">
+                  Dispositions disponibles
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6 pt-0">
+            <p className="text-slate-300 text-xs sm:text-sm">
+              Choisir la disposition active pour tous les serveurs
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card
           className="bg-slate-800 border-slate-700 hover:border-purple-500 transition-colors cursor-pointer"
           onClick={() => router.push("/admin/menu-editor")}
         >
@@ -583,6 +608,26 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent className="p-4 sm:p-6 pt-0">
             <p className="text-slate-300 text-xs sm:text-sm">Consulter tous les articles offerts avec traçabilité</p>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="bg-slate-800 border-slate-700 hover:border-rose-500 transition-colors cursor-pointer"
+          onClick={() => router.push("/admin/print-preview")}
+        >
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 sm:p-3 bg-rose-600 rounded-lg">
+                <Printer className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-white text-base sm:text-lg">Aperçu Tickets</CardTitle>
+                <CardDescription className="text-slate-400 text-xs sm:text-sm">Visualiser les formats</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6 pt-0">
+            <p className="text-slate-300 text-xs sm:text-sm">Ticket caisse, cuisine et bar en un coup d'œil</p>
           </CardContent>
         </Card>
 

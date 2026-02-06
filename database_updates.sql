@@ -11,6 +11,14 @@ ADD COLUMN IF NOT EXISTS opened_by_name TEXT;
 ALTER TABLE order_items 
 ADD COLUMN IF NOT EXISTS created_by_server_id UUID REFERENCES users(id);
 
+-- 2b. Ajouter le champ pour suivre l'impression des "à suivre" (plan)
+ALTER TABLE order_items
+ADD COLUMN IF NOT EXISTS printed_plan_at TIMESTAMPTZ;
+
+-- 2c. Ajouter le champ pour suivre l'impression des items "fired" (direct)
+ALTER TABLE order_items
+ADD COLUMN IF NOT EXISTS printed_fired_at TIMESTAMPTZ;
+
 -- 3. Ajouter les champs pour suivre les articles offerts dans les statistiques
 ALTER TABLE daily_sales 
 ADD COLUMN IF NOT EXISTS complimentary_amount DECIMAL(10,2) DEFAULT 0,
@@ -19,6 +27,8 @@ ADD COLUMN IF NOT EXISTS complimentary_count INTEGER DEFAULT 0;
 -- 4. Créer des index pour optimiser les performances
 CREATE INDEX IF NOT EXISTS idx_tables_opened_by ON tables(opened_by);
 CREATE INDEX IF NOT EXISTS idx_order_items_created_by_server_id ON order_items(created_by_server_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_printed_plan_at ON order_items(printed_plan_at);
+CREATE INDEX IF NOT EXISTS idx_order_items_printed_fired_at ON order_items(printed_fired_at);
 CREATE INDEX IF NOT EXISTS idx_daily_sales_complimentary ON daily_sales(date, server_id);
 
 -- 5. Mettre à jour les tables existantes (optionnel)
@@ -35,5 +45,5 @@ CREATE INDEX IF NOT EXISTS idx_daily_sales_complimentary ON daily_sales(date, se
 SELECT column_name, data_type, is_nullable 
 FROM information_schema.columns 
 WHERE table_name IN ('tables', 'order_items', 'daily_sales') 
-AND column_name IN ('opened_by', 'opened_by_name', 'created_by_server_id', 'complimentary_amount', 'complimentary_count')
+AND column_name IN ('opened_by', 'opened_by_name', 'created_by_server_id', 'printed_plan_at', 'printed_fired_at', 'complimentary_amount', 'complimentary_count')
 ORDER BY table_name, column_name;

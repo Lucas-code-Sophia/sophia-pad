@@ -32,7 +32,7 @@ export interface Table {
   position_x: number
   position_y: number
   status: "available" | "occupied" | "reserved"
-  location: "T" | "I" | "C" // T=Terrace, I=Interior, C=Canapé
+  location: "T" | "I" | "C" | "H" // T=Terrace, I=Interior, C=Canapé, H=Table d'Hote
   opened_by?: string // UUID du serveur qui a ouvert la table
   opened_by_name?: string // Nom du serveur qui a ouvert la table
   created_at: string
@@ -111,6 +111,8 @@ export interface OrderItem {
   created_by_server_id?: string // UUID du serveur qui a ajouté cet article
   created_at: string
   fired_at?: string
+  printed_plan_at?: string | null
+  printed_fired_at?: string | null
 }
 
 export interface Payment {
@@ -140,11 +142,13 @@ export interface KitchenTicket {
   id: string
   order_id: string
   table_number: string // Changed from number to string to match table_number format
+  server_name?: string
   type: "kitchen" | "bar"
   items: Array<{
     name: string
     quantity: number
     notes?: string
+    phase?: "direct" | "to_follow_1" | "to_follow_2"
   }>
   status: "pending" | "completed"
   created_at: string

@@ -46,40 +46,76 @@ export default function KitchenPage() {
   }
 
   const printTicket = (ticket: KitchenTicket) => {
-    // Simulate printing
-    const printWindow = window.open("", "_blank")
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Ticket Cuisine - Table ${ticket.table_number}</title>
-            <style>
-              body { font-family: monospace; padding: 20px; }
-              h1 { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
-              .item { margin: 10px 0; }
-              .notes { font-style: italic; margin-left: 20px; }
-              .time { text-align: center; margin-top: 20px; border-top: 1px solid #000; padding-top: 10px; }
-            </style>
-          </head>
-          <body>
-            <h1>CUISINE - TABLE ${ticket.table_number}</h1>
-            ${ticket.items
-              .map(
-                (item) => `
-              <div class="item">
-                <strong>${item.quantity}x ${item.name}</strong>
-                ${item.notes ? `<div class="notes">Note: ${item.notes}</div>` : ""}
-              </div>
-            `,
-              )
-              .join("")}
-            <div class="time">${new Date(ticket.created_at).toLocaleTimeString("fr-FR")}</div>
-          </body>
-        </html>
-      `)
-      printWindow.document.close()
-      printWindow.print()
+    const sendPrint = async () => {
+      const directItems = ticket.items.filter((item) => item.phase !== "to_follow_1" && item.phase !== "to_follow_2")
+      const follow1Items = ticket.items.filter((item) => item.phase === "to_follow_1")
+      const follow2Items = ticket.items.filter((item) => item.phase === "to_follow_2")
+      const line = "-------------------------------"
+
+      const lines: Array<{ content: string; align?: "left" | "center"; bold?: boolean; underline?: boolean; width?: number; height?: number }> = []
+
+      lines.push({ content: `Table ${ticket.table_number}`, bold: true, width: 2, height: 2 })
+      if (ticket.server_name) {
+        lines.push({ content: `Serveur: ${ticket.server_name}`, bold: true, width: 2, height: 2 })
+      }
+      lines.push({ content: `Heure: ${new Date(ticket.created_at).toLocaleTimeString("fr-FR")}` })
+      lines.push({ content: line, align: "center" })
+
+      const pushItems = (items: typeof ticket.items, strong: boolean) => {
+        items.forEach((item) => {
+          lines.push({ content: `${item.quantity}x ${item.name}`, bold: strong })
+          if (item.notes) {
+            lines.push({ content: `  - ${item.notes}` })
+          }
+        })
+      }
+
+      if (directItems.length > 0) {
+        lines.push({ content: "DIRECT", bold: true })
+        pushItems(directItems, true)
+      }
+
+      if (directItems.length > 0 && (follow1Items.length > 0 || follow2Items.length > 0)) {
+        lines.push({ content: line, align: "center" })
+        lines.push({ content: line, align: "center" })
+      }
+
+      if (follow1Items.length > 0) {
+        lines.push({ content: "A SUIVRE 1" })
+        pushItems(follow1Items, false)
+      }
+
+      if (follow1Items.length > 0 && follow2Items.length > 0) {
+        lines.push({ content: line, align: "center" })
+        lines.push({ content: line, align: "center" })
+      }
+
+      if (follow2Items.length > 0) {
+        lines.push({ content: "A SUIVRE 2" })
+        pushItems(follow2Items, false)
+      }
+
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "kitchen",
+          ticket: {
+            title: "CUISINE",
+            lines,
+            cut: true,
+            beep: true,
+          },
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(json?.error || "Échec de l'impression")
+      }
     }
+
+    sendPrint().catch(() => alert("Échec de l'impression"))
   }
 
   if (loading) {
@@ -125,16 +161,56 @@ export default function KitchenPage() {
             </div>
 
             <div className="space-y-2 sm:space-y-3 mb-3 sm:mb-4">
-              {ticket.items.map((item, index) => (
-                <div key={index} className="bg-slate-900/50 p-2 sm:p-3 rounded">
-                  <div className="flex items-start justify-between">
-                    <span className="text-sm sm:text-base text-white font-semibold">
-                      {item.quantity}x {item.name}
-                    </span>
+              {(() => {
+                const directItems = ticket.items.filter((item) => item.phase !== "to_follow_1" && item.phase !== "to_follow_2")
+                const follow1Items = ticket.items.filter((item) => item.phase === "to_follow_1")
+                const follow2Items = ticket.items.filter((item) => item.phase === "to_follow_2")
+                const renderItem = (item: KitchenTicket["items"][number], strong: boolean) => (
+                  <div key={`${item.name}-${item.quantity}-${item.notes || ""}`} className="bg-slate-900/50 p-2 sm:p-3 rounded">
+                    <div className="flex items-start justify-between">
+                      <span className={`${strong ? "font-semibold text-white" : "text-slate-300"} text-sm sm:text-base`}>
+                        {item.quantity}x {item.name}
+                      </span>
+                    </div>
+                    {item.notes && <p className="text-xs sm:text-sm text-yellow-400 mt-1 italic">Note: {item.notes}</p>}
                   </div>
-                  {item.notes && <p className="text-xs sm:text-sm text-yellow-400 mt-1 italic">Note: {item.notes}</p>}
-                </div>
-              ))}
+                )
+
+                return (
+                  <>
+                    {directItems.length > 0 && (
+                      <>
+                        <div className="text-xs font-bold text-white tracking-wide">DIRECT</div>
+                        {directItems.map((item) => renderItem(item, true))}
+                      </>
+                    )}
+                    {directItems.length > 0 && (follow1Items.length > 0 || follow2Items.length > 0) && (
+                      <div className="my-2">
+                        <div className="border-t border-slate-700" />
+                        <div className="border-t border-slate-700 mt-1" />
+                      </div>
+                    )}
+                    {follow1Items.length > 0 && (
+                      <>
+                        <div className="text-[11px] text-slate-300 tracking-wide">À SUIVRE 1</div>
+                        {follow1Items.map((item) => renderItem(item, false))}
+                      </>
+                    )}
+                    {follow1Items.length > 0 && follow2Items.length > 0 && (
+                      <div className="my-2">
+                        <div className="border-t border-slate-700" />
+                        <div className="border-t border-slate-700 mt-1" />
+                      </div>
+                    )}
+                    {follow2Items.length > 0 && (
+                      <>
+                        <div className="text-[11px] text-slate-300 tracking-wide">À SUIVRE 2</div>
+                        {follow2Items.map((item) => renderItem(item, false))}
+                      </>
+                    )}
+                  </>
+                )
+              })()}
             </div>
 
             <div className="flex gap-2">

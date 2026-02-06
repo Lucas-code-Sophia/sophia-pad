@@ -27,18 +27,28 @@ export async function POST(request: NextRequest) {
         return { deleted: true, id: item.cartItemId }
       } else {
         // Mettre à jour l'article
+        const updatePayload: Record<string, any> = {
+          menu_item_id: item.menuItemId,
+          quantity: item.quantity,
+          price: item.price,
+          status: item.status === "deleted" ? "deleted" : item.status,
+          notes: item.notes,
+          fired_at: item.status === "fired" ? new Date().toISOString() : null,
+          is_complimentary: item.isComplimentary || false,
+          complimentary_reason: item.complimentaryReason,
+        }
+
+        if (item.status === "pending" || item.status === "to_follow_1" || item.status === "to_follow_2") {
+          updatePayload.printed_plan_at = null
+        }
+
+        if (item.status !== "fired") {
+          updatePayload.printed_fired_at = null
+        }
+
         const { data, error } = await supabase
           .from("order_items")
-          .update({
-            menu_item_id: item.menuItemId,
-            quantity: item.quantity,
-            price: item.price,
-            status: item.status === "deleted" ? "deleted" : item.status,
-            notes: item.notes,
-            fired_at: item.status === "fired" ? new Date().toISOString() : null,
-            is_complimentary: item.isComplimentary || false,
-            complimentary_reason: item.complimentaryReason,
-          })
+          .update(updatePayload)
           .eq("order_id", orderId)
           .eq("id", item.cartItemId)
 

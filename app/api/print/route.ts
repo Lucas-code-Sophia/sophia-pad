@@ -5,6 +5,7 @@ import { buildEposXml, sendToEpos, sampleTicket } from "@/lib/epos"
 type Body = {
   kind: "kitchen" | "bar" | "suites"
   ip?: string
+  dryRun?: boolean
   ticket?: {
     title?: string
     lines?: Array<{ content: string; align?: "left" | "center" | "right"; bold?: boolean; underline?: boolean; width?: number; height?: number }>
@@ -22,6 +23,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing kind" }, { status: 400 })
     }
 
+    const dryRun = body.dryRun === true
+
     let targetIp = body.ip
     if (!targetIp) {
       const supabase = await createClient()
@@ -34,7 +37,7 @@ export async function POST(request: Request) {
       targetIp = kind === "bar" ? value.bar_ip : value.kitchen_ip
     }
 
-    if (!targetIp) {
+    if (!targetIp && !dryRun) {
       return NextResponse.json({ error: "Printer IP not configured" }, { status: 400 })
     }
 
@@ -43,6 +46,9 @@ export async function POST(request: Request) {
       : sampleTicket(kind)
 
     const xml = buildEposXml(ticket)
+    if (dryRun) {
+      return NextResponse.json({ ok: true, dryRun: true, xml, ticket })
+    }
     const res = await sendToEpos(targetIp, xml)
 
     return NextResponse.json({ ok: res.ok, status: res.status, body: res.body })

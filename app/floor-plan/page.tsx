@@ -18,6 +18,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  DEFAULT_FLOOR_PLAN_LAYOUT,
+  isFloorPlanLayoutId,
+  type FloorPlanLayout,
+  type FloorPlanLayoutId,
+  type TableLocation,
+} from "@/lib/floor-plan-layouts"
 import { toast } from "@/components/ui/use-toast"
 
 export default function FloorPlanPage() {
@@ -38,8 +45,10 @@ export default function FloorPlanPage() {
   const [newTable, setNewTable] = useState({
     table_number: "",
     seats: 2,
-    location: "I" as "T" | "I" | "C",
+    location: "I" as "T" | "I" | "C" | "H",
   })
+  const [activeLayout, setActiveLayout] = useState<FloorPlanLayoutId>(DEFAULT_FLOOR_PLAN_LAYOUT)
+  const [customLayouts, setCustomLayouts] = useState<FloorPlanLayout[]>([])
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -116,15 +125,21 @@ export default function FloorPlanPage() {
     if (user) {
       fetchTables()
       fetchReservationsForToday()
+      fetchLayoutSetting()
+      fetchLayouts()
       // Refresh periodically
       const interval = setInterval(fetchTables, 5000) // Augmenté à 5 secondes
       const rInterval = setInterval(fetchReservationsForToday, 15000)
+      const layoutInterval = setInterval(fetchLayoutSetting, 30000)
+      const layoutsInterval = setInterval(fetchLayouts, 60000)
       
       // Rafraîchir quand la page redevient visible (retour d'une autre page)
       const handleVisibilityChange = () => {
         if (!document.hidden) {
           fetchTables()
           fetchReservationsForToday()
+          fetchLayoutSetting()
+          fetchLayouts()
         }
       }
       
@@ -133,6 +148,8 @@ export default function FloorPlanPage() {
       return () => {
         clearInterval(interval)
         clearInterval(rInterval)
+        clearInterval(layoutInterval)
+        clearInterval(layoutsInterval)
         document.removeEventListener('visibilitychange', handleVisibilityChange)
       }
     }
@@ -189,6 +206,31 @@ export default function FloorPlanPage() {
           map[k].sort((a, b) => (a.reservation_time < b.reservation_time ? -1 : 1))
         }
         setReservationsByTable(map)
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const fetchLayoutSetting = async () => {
+    try {
+      const response = await fetch("/api/settings/floor-plan-layout")
+      if (response.ok) {
+        const data = await response.json()
+        const nextLayout = String(data?.active_layout || DEFAULT_FLOOR_PLAN_LAYOUT)
+        setActiveLayout(nextLayout || DEFAULT_FLOOR_PLAN_LAYOUT)
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const fetchLayouts = async () => {
+    try {
+      const response = await fetch("/api/settings/floor-plan-layouts")
+      if (response.ok) {
+        const data = await response.json()
+        setCustomLayouts(Array.isArray(data?.layouts) ? data.layouts : [])
       }
     } catch (e) {
       // ignore
@@ -477,6 +519,7 @@ export default function FloorPlanPage() {
   )
   const canapeeTables = sortTablesByNumber(tables.filter((t) => t.location === "C"))
   const interiorTables = sortTablesByNumber(tables.filter((t) => t.location === "I"))
+  const tableHoteTables = sortTablesByNumber(tables.filter((t) => t.location === "H"))
   
   // Tables du serveur connecté
   const myTables = sortTablesByNumber(
@@ -511,6 +554,230 @@ export default function FloorPlanPage() {
       )}
     </button>
   )
+
+  const GRID_COLS: Record<number, string> = {
+    1: "grid-cols-1",
+    2: "grid-cols-2",
+    3: "grid-cols-3",
+    4: "grid-cols-4",
+    5: "grid-cols-5",
+    6: "grid-cols-6",
+    7: "grid-cols-7",
+    8: "grid-cols-8",
+  }
+
+  const GRID_COLS_SM: Record<number, string> = {
+    1: "sm:grid-cols-1",
+    2: "sm:grid-cols-2",
+    3: "sm:grid-cols-3",
+    4: "sm:grid-cols-4",
+    5: "sm:grid-cols-5",
+    6: "sm:grid-cols-6",
+    7: "sm:grid-cols-7",
+    8: "sm:grid-cols-8",
+  }
+
+  const getGridClass = (mobileCols: number, desktopCols: number) =>
+    `grid ${GRID_COLS[mobileCols] || "grid-cols-4"} ${GRID_COLS_SM[desktopCols] || "sm:grid-cols-8"} gap-2 sm:gap-3`
+
+  const renderMyTablesSection = () => {
+    if (myTables.length === 0) return null
+    return (
+      <div>
+        <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Mes tables</h2>
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
+          {myTables.map((table) => (
+            <TableButton key={table.id} table={table} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const renderBaseLayout = () => (
+    <>
+      {renderMyTablesSection()}
+      <div>
+        <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Terrasse</h2>
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
+          {terraceTablesTop.slice(0, 24).map((table) => (
+            <TableButton key={table.id} table={table} />
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+        <div>
+          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Canapé</h2>
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            {canapeeTables.map((table) => (
+              <TableButton key={table.id} table={table} aspectRatio={false} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3 sm:invisible">Terrasse (suite)</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            {terraceTablesMiddle.map((table) => (
+              <TableButton key={table.id} table={table} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Intérieur</h2>
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
+          {interiorTables.map((table) => (
+            <TableButton key={table.id} table={table} />
+          ))}
+        </div>
+      </div>
+      {tableHoteTables.length > 0 && (
+        <div>
+          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Table d&apos;Hôte</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            {tableHoteTables.map((table) => (
+              <TableButton key={table.id} table={table} aspectRatio={false} />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+
+  const renderZonesLayout = () => {
+    const terraceTablesAll = sortTablesByNumber(tables.filter((t) => t.location === "T"))
+    return (
+      <>
+        {renderMyTablesSection()}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="lg:col-span-2">
+            <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Terrasse</h2>
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
+              {terraceTablesAll.map((table) => (
+                <TableButton key={table.id} table={table} />
+              ))}
+            </div>
+          </div>
+          <div className="space-y-4 sm:space-y-6">
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Intérieur</h2>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-3">
+                {interiorTables.map((table) => (
+                  <TableButton key={table.id} table={table} />
+                ))}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Canapé</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                {canapeeTables.map((table) => (
+                  <TableButton key={table.id} table={table} aspectRatio={false} />
+                ))}
+              </div>
+            </div>
+            {tableHoteTables.length > 0 && (
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Table d&apos;Hôte</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                  {tableHoteTables.map((table) => (
+                    <TableButton key={table.id} table={table} aspectRatio={false} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  const renderCompactLayout = () => (
+    <>
+      {renderMyTablesSection()}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+        <div>
+          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Terrasse</h2>
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 sm:gap-3">
+            {sortTablesByNumber(tables.filter((t) => t.location === "T")).map((table) => (
+              <TableButton key={table.id} table={table} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Intérieur</h2>
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 sm:gap-3">
+            {interiorTables.map((table) => (
+              <TableButton key={table.id} table={table} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Canapé</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            {canapeeTables.map((table) => (
+              <TableButton key={table.id} table={table} aspectRatio={false} />
+            ))}
+          </div>
+        </div>
+        {tableHoteTables.length > 0 && (
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Table d&apos;Hôte</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              {tableHoteTables.map((table) => (
+                <TableButton key={table.id} table={table} aspectRatio={false} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  )
+
+  const renderCustomLayout = (layout: FloorPlanLayout) => (
+    <>
+      {renderMyTablesSection()}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        {layout.zones.map((zone) => {
+          const zoneTables = sortTablesByNumber(
+            tables.filter((t) => zone.locations.includes(t.location as TableLocation)),
+          )
+          if (zoneTables.length === 0) return null
+          const isCanapeLike = zone.locations.includes("C") || zone.locations.includes("H")
+          const mobileCols = zone.layout?.columns?.mobile ?? (isCanapeLike ? 2 : 4)
+          const desktopCols = zone.layout?.columns?.desktop ?? (isCanapeLike ? 4 : 8)
+          const gridClass = getGridClass(mobileCols, desktopCols)
+          const aspectRatio = zone.layout?.aspect === "rect" ? false : !isCanapeLike
+          return (
+            <div key={zone.id}>
+              <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">{zone.title}</h2>
+              <div className={gridClass}>
+                {zoneTables.map((table) => (
+                  <TableButton key={table.id} table={table} aspectRatio={aspectRatio} />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+
+  const renderLayout = () => {
+    if (!isFloorPlanLayoutId(activeLayout)) {
+      const customLayout = customLayouts.find((layout) => layout.id === activeLayout)
+      if (customLayout) return renderCustomLayout(customLayout)
+    }
+
+    switch (activeLayout) {
+      case "zones":
+        return renderZonesLayout()
+      case "compact":
+        return renderCompactLayout()
+      case "base_list":
+      default:
+        return renderBaseLayout()
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#DAF6FC] p-2 sm:p-4">
@@ -635,7 +902,7 @@ export default function FloorPlanPage() {
                   <Label>Localisation</Label>
                   <Select
                     value={newTable.location}
-                    onValueChange={(value: "T" | "I" | "C") => setNewTable({ ...newTable, location: value })}
+                    onValueChange={(value: "T" | "I" | "C" | "H") => setNewTable({ ...newTable, location: value })}
                   >
                     <SelectTrigger className="bg-slate-700 border-slate-600">
                       <SelectValue />
@@ -644,6 +911,7 @@ export default function FloorPlanPage() {
                       <SelectItem value="T">Terrasse (T)</SelectItem>
                       <SelectItem value="I">Intérieur (I)</SelectItem>
                       <SelectItem value="C">Canapé (C)</SelectItem>
+                      <SelectItem value="H">Table d&apos;Hôte (H)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -713,62 +981,7 @@ export default function FloorPlanPage() {
       </div>
 
       {/* Floor Plan */}
-      <div className="space-y-4 sm:space-y-6">
-        {/* Mes Tables - Section pour le serveur connecté */}
-        {myTables.length > 0 && (
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Mes tables</h2>
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
-              {myTables.map((table) => (
-                <TableButton key={table.id} table={table} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Terrace Section - Top rows */}
-        <div>
-          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Terrasse</h2>
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
-            {terraceTablesTop.slice(0, 24).map((table) => (
-              <TableButton key={table.id} table={table} />
-            ))}
-          </div>
-        </div>
-
-        {/* Middle section with Terrace and Canapé */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-          {/* Canapé Section */}
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Canapé</h2>
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              {canapeeTables.map((table) => (
-                <TableButton key={table.id} table={table} aspectRatio={false} />
-              ))}
-            </div>
-          </div>
-
-          {/* Terrace Middle */}
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3 sm:invisible">Terrasse (suite)</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-              {terraceTablesMiddle.map((table) => (
-                <TableButton key={table.id} table={table} />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Interior Section */}
-        <div>
-          <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Intérieur</h2>
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-3">
-            {interiorTables.map((table) => (
-              <TableButton key={table.id} table={table} />
-            ))}
-          </div>
-        </div>
-      </div>
+      <div className="space-y-4 sm:space-y-6">{renderLayout()}</div>
 
       {/* Stats */}
       <div className="mt-4 sm:mt-6 grid grid-cols-3 gap-2 sm:gap-4">

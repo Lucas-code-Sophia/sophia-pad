@@ -285,7 +285,7 @@ export default function SettingsPage() {
                     <h3 className="font-semibold text-white mb-2">Plan de salle</h3>
                     <ul className="list-disc list-inside space-y-1 text-sm">
                       <li>Visualisation des tables disponibles/occupées</li>
-                      <li>Filtrage par zone (Terrasse, Intérieur, Canapé)</li>
+                      <li>Filtrage par zone (Terrasse, Intérieur, Canapé, Table d'Hôte)</li>
                       <li>Recherche de table par numéro</li>
                       <li>Accès aux réservations</li>
                     </ul>

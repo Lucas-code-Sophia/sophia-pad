@@ -21,7 +21,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch tickets" }, { status: 500 })
     }
 
-    return NextResponse.json(tickets)
+    if (!tickets || tickets.length === 0) {
+      return NextResponse.json(tickets)
+    }
+
+    const orderIds = Array.from(new Set(tickets.map((t: any) => t.order_id).filter(Boolean)))
+
+    let orderServerMap = new Map<string, string>()
+    if (orderIds.length > 0) {
+      const { data: ordersData } = await supabase.from("orders").select("id, server_id").in("id", orderIds)
+      const serverIds = Array.from(new Set((ordersData || []).map((o: any) => o.server_id).filter(Boolean)))
+
+      let serverNameMap = new Map<string, string>()
+      if (serverIds.length > 0) {
+        const { data: servers } = await supabase.from("users").select("id, name").in("id", serverIds)
+        serverNameMap = new Map((servers || []).map((u: any) => [u.id, u.name]))
+      }
+
+      orderServerMap = new Map(
+        (ordersData || []).map((o: any) => [o.id, serverNameMap.get(o.server_id) || ""]),
+      )
+    }
+
+    const enriched = tickets.map((t: any) => ({
+      ...t,
+      server_name: orderServerMap.get(t.order_id) || "",
+    }))
+
+    return NextResponse.json(enriched)
   } catch (error) {
     console.error("[v0] Error in tickets API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
