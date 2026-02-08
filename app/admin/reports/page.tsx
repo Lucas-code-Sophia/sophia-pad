@@ -39,6 +39,7 @@ interface TopDish {
 interface ServerStats {
   server_name: string
   total_sales: number
+  total_sales_ht?: number
   order_count: number
   average_ticket: number
   complimentary_amount?: number
@@ -58,12 +59,19 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
     totalSales: 0,
+    totalSalesHT: 0,
     totalOrders: 0,
     averageTicket: 0,
     totalTax: 0,
+    taxRate10Share: 0,
+    taxRate20Share: 0,
     totalComplimentaryAmount: 0,
     totalComplimentaryCount: 0,
     complimentaryPercentage: 0,
+    paymentMix: {
+      volume: { cash: 0, card: 0, other: 0 },
+      value: { cash: 0, card: 0, other: 0 },
+    },
   })
 
   useEffect(() => {
@@ -99,12 +107,19 @@ export default function ReportsPage() {
         setServerStats(data.serverStats || [])
         setStats(data.stats || { 
           totalSales: 0, 
+          totalSalesHT: 0,
           totalOrders: 0, 
           averageTicket: 0, 
           totalTax: 0, 
+          taxRate10Share: 0,
+          taxRate20Share: 0,
           totalComplimentaryAmount: 0,
           totalComplimentaryCount: 0,
           complimentaryPercentage: 0,
+          paymentMix: {
+            volume: { cash: 0, card: 0, other: 0 },
+            value: { cash: 0, card: 0, other: 0 },
+          },
         })
       }
     } catch (error) {
@@ -229,13 +244,14 @@ export default function ReportsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <Card className="bg-gradient-to-br from-blue-900/20 to-blue-800/20 border-blue-700/50 backdrop-blur-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-blue-400">Chiffre d'affaires</CardTitle>
+            <CardTitle className="text-sm font-medium text-blue-400">CA (TTC)</CardTitle>
             <div className="p-2 bg-blue-500/20 rounded-lg">
               <DollarSign className="h-4 w-4 text-blue-400" />
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl sm:text-3xl font-bold text-white">{stats.totalSales.toFixed(2)} €</div>
+            <div className="text-xs text-blue-300 mt-1">HT : {stats.totalSalesHT.toFixed(2)} €</div>
             <div className="text-xs text-blue-400 mt-1">+{((stats.totalSales / (stats.totalSales - stats.totalComplimentaryAmount)) * 100 - 100).toFixed(1)}% vs objectif</div>
           </CardContent>
         </Card>
@@ -284,7 +300,10 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl sm:text-3xl font-bold text-white">{stats.totalTax.toFixed(2)} €</div>
-            <div className="text-xs text-red-400 mt-1">~18% estimée</div>
+            <div className="text-xs text-red-300 mt-1">
+              {stats.taxRate20Share.toFixed(0)}% du CA à 20%, {stats.taxRate10Share.toFixed(0)}% du CA à 10%
+            </div>
+            <div className="text-xs text-red-400 mt-1">Calculée précisément</div>
           </CardContent>
         </Card>
       </div>
@@ -301,16 +320,44 @@ export default function ReportsPage() {
                 color: "hsl(var(--chart-1))",
               },
             }}
-            className="h-[300px]"
+            className="h-[300px] [&_.recharts-legend-item-text]:fill-slate-200 [&_.recharts-cartesian-axis-tick_text]:fill-slate-100"
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={salesData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" />
+                <defs>
+                  <linearGradient id="salesLineGradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#38bdf8" stopOpacity={1} />
+                    <stop offset="50%" stopColor="#0ea5e9" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity={1} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.25)" />
+                <XAxis
+                  dataKey="date"
+                  stroke="rgba(248,250,252,0.95)"
+                  tick={{ fill: "#f8fafc", fontSize: 12 }}
+                  tickLine={{ stroke: "rgba(248,250,252,0.8)" }}
+                  axisLine={{ stroke: "rgba(248,250,252,0.7)" }}
+                />
+                <YAxis
+                  stroke="rgba(248,250,252,0.95)"
+                  tick={{ fill: "#f8fafc", fontSize: 12 }}
+                  tickLine={{ stroke: "rgba(248,250,252,0.8)" }}
+                  axisLine={{ stroke: "rgba(248,250,252,0.7)" }}
+                />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Legend />
-                <Line type="monotone" dataKey="total" stroke="hsl(var(--chart-1))" strokeWidth={2} name="Ventes (€)" />
+                <Legend wrapperStyle={{ color: "#e2e8f0" }} />
+                <Line
+                  type="monotone"
+                  dataKey="total"
+                  stroke="url(#salesLineGradient)"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  dot={{ r: 3, fill: "#e2e8f0", stroke: "#0ea5e9", strokeWidth: 2 }}
+                  activeDot={{ r: 5, fill: "#0ea5e9", stroke: "#e2e8f0", strokeWidth: 2 }}
+                  name="Ventes (€)"
+                />
               </LineChart>
             </ResponsiveContainer>
           </ChartContainer>
@@ -335,13 +382,27 @@ export default function ReportsPage() {
                   color: "#f59e0b", // Amber color
                 },
               }}
-              className="h-[350px]"
+              className="h-[350px] [&_.recharts-cartesian-axis-tick_text]:fill-slate-100 [&_.recharts-legend-item-text]:fill-slate-200"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={topDishes.slice(0, 10)} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                  <XAxis type="number" stroke="rgba(255, 255, 255, 0.3)" />
-                  <YAxis dataKey="name" type="category" stroke="rgba(255, 255, 255, 0.3)" width={100} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.18)" />
+                  <XAxis
+                    type="number"
+                    stroke="rgba(248, 250, 252, 0.9)"
+                    tick={{ fill: "#f8fafc", fontSize: 12 }}
+                    tickLine={{ stroke: "rgba(248, 250, 252, 0.8)" }}
+                    axisLine={{ stroke: "rgba(248, 250, 252, 0.7)" }}
+                  />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke="rgba(248, 250, 252, 0.9)"
+                    tick={{ fill: "#f8fafc", fontSize: 12 }}
+                    tickLine={{ stroke: "rgba(248, 250, 252, 0.8)" }}
+                    axisLine={{ stroke: "rgba(248, 250, 252, 0.7)" }}
+                    width={120}
+                  />
                   <ChartTooltip 
                     content={<ChartTooltipContent />}
                   />
@@ -413,6 +474,26 @@ export default function ReportsPage() {
         </Card>
       </div>
 
+      <Card className="bg-gradient-to-br from-slate-900/60 to-slate-800/40 border-slate-700/60 backdrop-blur-md mt-6">
+        <CardHeader>
+          <CardTitle className="text-white">Répartition des paiements</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-slate-900/40 border border-slate-700/60 rounded-lg p-4">
+            <div className="text-sm text-slate-300 mb-2">Volume (nombre de ventes)</div>
+            <div className="text-white text-base">
+              CB {stats.paymentMix.volume.card.toFixed(0)}% · Espèces {stats.paymentMix.volume.cash.toFixed(0)}%
+            </div>
+          </div>
+          <div className="bg-slate-900/40 border border-slate-700/60 rounded-lg p-4">
+            <div className="text-sm text-slate-300 mb-2">Valeur (CA)</div>
+            <div className="text-white text-base">
+              CB {stats.paymentMix.value.card.toFixed(0)}% · Espèces {stats.paymentMix.value.cash.toFixed(0)}%
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="bg-gradient-to-br from-indigo-900/20 to-indigo-800/20 border-indigo-700/50 backdrop-blur-sm mt-6">
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
@@ -428,6 +509,7 @@ export default function ReportsPage() {
                   <th className="text-left py-3 px-4 text-indigo-400 font-medium">Serveur</th>
                   <th className="text-right py-3 px-4 text-indigo-400 font-medium">Commandes</th>
                   <th className="text-right py-3 px-4 text-indigo-400 font-medium">CA total</th>
+                  <th className="text-right py-3 px-4 text-indigo-400 font-medium">CA HT</th>
                   <th className="text-right py-3 px-4 text-indigo-400 font-medium">Ticket moy</th>
                   <th className="text-right py-3 px-4 text-indigo-400 font-medium">Offerts</th>
                   <th className="text-right py-3 px-4 text-indigo-400 font-medium">% Offerts</th>
@@ -439,6 +521,7 @@ export default function ReportsPage() {
                     <td className="py-3 px-4 text-white font-medium">{server.server_name}</td>
                     <td className="py-3 px-4 text-right text-white">{server.order_count}</td>
                     <td className="py-3 px-4 text-right text-white">{server.total_sales.toFixed(2)} €</td>
+                    <td className="py-3 px-4 text-right text-white">{(server.total_sales_ht ?? 0).toFixed(2)} €</td>
                     <td className="py-3 px-4 text-right text-white">{server.average_ticket.toFixed(2)} €</td>
                     <td className="py-3 px-4 text-right">
                       <div className="text-green-400">{server.complimentary_amount?.toFixed(2) || '0.00'} €</div>

@@ -32,6 +32,7 @@ interface CartItem {
   menuItem: MenuItem | null // Peut être null si non trouvé
   quantity: number
   status: "pending" | "to_follow_1" | "to_follow_2" | "fired" | "completed"
+  price?: number
   notes?: string
   isComplimentary?: boolean
   complimentaryReason?: string
@@ -67,6 +68,10 @@ export default function OrderPage() {
     itemId: null,
   })
   const [tempNotes, setTempNotes] = useState("")
+  const [menuEnfantDialogOpen, setMenuEnfantDialogOpen] = useState(false)
+  const [menuEnfantItem, setMenuEnfantItem] = useState<MenuItem | null>(null)
+  const [menuEnfantChoice, setMenuEnfantChoice] = useState("")
+  const [siropChoice, setSiropChoice] = useState("")
   const [supplementDialog, setSupplementDialog] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [transferTables, setTransferTables] = useState<Table[]>([])
@@ -89,6 +94,11 @@ export default function OrderPage() {
     type: "cart",
   })
   const [complimentaryReason, setComplimentaryReason] = useState("")
+
+  const normalizeName = (name: string) => name.trim().toLowerCase().replace(/’/g, "'")
+  const menuEnfantOptions = ["Pâtes poulet", "Frites poulet"]
+  const siropOptions = ["Menthe", "Citron", "Pêche", "Grenadine"]
+  const getCartItemPrice = (item: CartItem) => item.price ?? item.menuItem?.price ?? 0
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -134,6 +144,7 @@ export default function OrderPage() {
             menuItem: menuItem || null,
             quantity: item.quantity as number,
             status: item.status as CartItem['status'],
+            price: item.price as number | undefined,
             notes: item.notes as string | undefined,
             isComplimentary: item.is_complimentary as boolean,
             complimentaryReason: item.complimentary_reason as string | undefined,
@@ -241,6 +252,7 @@ export default function OrderPage() {
               menuItem: menuItem || null,
               quantity: item.quantity,
               status: item.status as "pending" | "to_follow_1" | "to_follow_2",
+              price: item.price,
               notes: item.notes,
               isComplimentary: item.is_complimentary,
               complimentaryReason: item.complimentary_reason,
@@ -330,7 +342,7 @@ export default function OrderPage() {
                 cartItemId: existingPending.cartItemId,
                 menuItemId: menuItem.id,
                 quantity: existingPending.quantity + 1,
-                price: menuItem.price,
+                price: getCartItemPrice(existingPending),
                 status: existingPending.status,
                 notes: existingPending.notes,
                 isComplimentary: existingPending.isComplimentary || false,
@@ -379,6 +391,84 @@ export default function OrderPage() {
     }
   }
 
+  const addItemsToOrder = async (
+    items: Array<{ menuItem: MenuItem; notes?: string; priceOverride?: number }>,
+  ) => {
+    if (items.length === 0) return
+
+    try {
+      const orderData = {
+        tableId,
+        serverId: user?.id || "",
+        items: items.map((item) => ({
+          menuItemId: item.menuItem.id,
+          quantity: 1,
+          price: item.priceOverride ?? item.menuItem.price,
+          status: "pending",
+          notes: item.notes || "",
+          isComplimentary: false,
+          complimentaryReason: "",
+        })),
+        supplements: [],
+        orderId: currentOrder?.id,
+      }
+
+      const response = await fetch("/api/orders/to-follow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData),
+      })
+
+      if (response.ok) {
+        await fetchOrderData()
+      }
+    } catch (error) {
+      console.error("[v0] Error adding items to order:", error)
+    }
+  }
+
+  const openMenuEnfantDialog = (item: MenuItem) => {
+    setMenuEnfantItem(item)
+    setMenuEnfantChoice("")
+    setSiropChoice("")
+    setMenuEnfantDialogOpen(true)
+  }
+
+  const handleMenuEnfantConfirm = async () => {
+    if (!menuEnfantItem || !menuEnfantChoice) return
+
+    const itemsToAdd: Array<{ menuItem: MenuItem; notes?: string; priceOverride?: number }> = [
+      {
+        menuItem: menuEnfantItem,
+        notes: menuEnfantChoice,
+      },
+    ]
+
+    if (siropChoice) {
+      const siropItem = menuItems.find((item) => normalizeName(item.name) === "sirop à l'eau")
+      if (siropItem) {
+        itemsToAdd.push({
+          menuItem: siropItem,
+          notes: `Goût: ${siropChoice} (inclus menu enfant)`,
+          priceOverride: 0,
+        })
+      } else {
+        alert("Article 'Sirop à l'eau' introuvable dans la carte.")
+      }
+    }
+
+    await addItemsToOrder(itemsToAdd)
+    setMenuEnfantDialogOpen(false)
+  }
+
+  const handleMenuItemClick = (item: MenuItem) => {
+    if (normalizeName(item.name) === "menu enfant") {
+      openMenuEnfantDialog(item)
+      return
+    }
+    addToCart(item)
+  }
+
   const removeFromCart = async (cartItemId: string) => {
     // Trouver l'article dans le panier
     const item = cart.find((item) => item.cartItemId === cartItemId)
@@ -396,7 +486,7 @@ export default function OrderPage() {
               cartItemId: cartItemId,
               menuItemId: item.menuItem?.id || '',
               quantity: item.quantity - 1,
-              price: item.menuItem?.price || 0,
+              price: getCartItemPrice(item),
               status: item.status, // Garder le même statut
               notes: item.notes,
               isComplimentary: item.isComplimentary || false,
@@ -420,7 +510,7 @@ export default function OrderPage() {
               cartItemId: cartItemId,
               menuItemId: item.menuItem?.id || '',
               quantity: 0, // Quantité 0 = suppression
-              price: item.menuItem?.price || 0,
+              price: getCartItemPrice(item),
               status: item.status,
               notes: item.notes,
               isComplimentary: item.isComplimentary || false,
@@ -465,7 +555,7 @@ export default function OrderPage() {
             cartItemId: cartItemId,
             menuItemId: item.menuItem?.id || '',
             quantity: item.quantity,
-            price: item.menuItem?.price || 0,
+            price: getCartItemPrice(item),
             status: newStatus, // Nouveau statut
             notes: item.notes,
             isComplimentary: item.isComplimentary || false,
@@ -503,14 +593,14 @@ export default function OrderPage() {
           body: JSON.stringify({
             orderId: currentOrder?.id,
             items: [{
-              cartItemId: notesDialog.itemId,
-              menuItemId: item.menuItem?.id || '',
-              quantity: item.quantity,
-              price: item.menuItem?.price || 0,
-              status: item.status,
-              notes: tempNotes, // Nouvelles notes
-              isComplimentary: item.isComplimentary || false,
-              complimentaryReason: item.complimentaryReason,
+            cartItemId: notesDialog.itemId,
+            menuItemId: item.menuItem?.id || '',
+            quantity: item.quantity,
+            price: getCartItemPrice(item),
+            status: item.status,
+            notes: tempNotes, // Nouvelles notes
+            isComplimentary: item.isComplimentary || false,
+            complimentaryReason: item.complimentaryReason,
             }],
             serverId: user?.id || "",
           }),
@@ -756,7 +846,7 @@ export default function OrderPage() {
           cartItemId: item.cartItemId,
           menuItemId: item.menuItem?.id || "",
           quantity: item.quantity,
-          price: item.menuItem?.price || 0,
+          price: getCartItemPrice(item),
           status: shouldFire ? "fired" : item.status,
           notes: item.notes,
           isComplimentary: item.isComplimentary || false,
@@ -804,7 +894,7 @@ export default function OrderPage() {
 
   const filteredItems = menuItems.filter((item) => item.category_id === selectedCategory && item.status !== false)
   const cartTotal =
-    cart.reduce((sum, item) => sum + (item.isComplimentary || !item.menuItem ? 0 : item.menuItem.price * item.quantity), 0) +
+    cart.reduce((sum, item) => sum + (item.isComplimentary ? 0 : getCartItemPrice(item) * item.quantity), 0) +
     supplements.reduce((sum, sup) => sum + (sup.isComplimentary ? 0 : sup.amount), 0) +
     existingItems.reduce((sum, item) => sum + (item.is_complimentary ? 0 : item.price * item.quantity), 0)
   const toFollowCount = cart.filter((item) => item.status === "to_follow_1" || item.status === "to_follow_2").length
@@ -986,7 +1076,7 @@ export default function OrderPage() {
                       ? "bg-red-900/30 border-2 border-red-700 opacity-60 cursor-not-allowed"
                       : `cursor-pointer ${colorClasses || "bg-slate-800 border-slate-700 hover:bg-slate-750"}`
                   }`}
-                  onClick={() => !isOutOfStock && addToCart(item)}
+                  onClick={() => !isOutOfStock && handleMenuItemClick(item)}
                 >
                   <div className="text-center">
                     <div className={`font-semibold text-sm sm:text-base mb-1 truncate ${isLightColor ? "text-slate-900" : "text-white"}`}>
@@ -1013,7 +1103,7 @@ export default function OrderPage() {
                           className="bg-slate-700 hover:bg-slate-600 border-slate-600 text-white h-6 w-6 sm:h-7 sm:w-7 p-0"
                           onClick={(e) => {
                             e.stopPropagation()
-                            addToCart(item)
+                            handleMenuItemClick(item)
                           }}
                         >
                           <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -1104,7 +1194,7 @@ export default function OrderPage() {
                           <p
                             className={`text-xs sm:text-sm ${item.isComplimentary ? "line-through text-slate-500" : "text-slate-400"}`}
                           >
-                            {item.menuItem?.price.toFixed(2) || "0.00"} €
+                            {getCartItemPrice(item).toFixed(2)} €
                           </p>
                           {item.isComplimentary && item.complimentaryReason && (
                             <p className="text-xs text-green-400 italic mt-1">{item.complimentaryReason}</p>
@@ -1255,7 +1345,7 @@ export default function OrderPage() {
                     <div>Déjà commandé: {existingItems.reduce((sum, item) => sum + (item.is_complimentary ? 0 : item.price * item.quantity), 0).toFixed(2)} €</div>
                   )}
                   {cart.length > 0 && (
-                    <div>Plats en attente: {cart.reduce((sum, item) => sum + (item.isComplimentary || !item.menuItem ? 0 : item.menuItem.price * item.quantity), 0).toFixed(2)} €</div>
+                    <div>Plats en attente: {cart.reduce((sum, item) => sum + (item.isComplimentary ? 0 : getCartItemPrice(item) * item.quantity), 0).toFixed(2)} €</div>
                   )}
                   {supplements.length > 0 && (
                     <div>Suppléments: {supplements.reduce((sum, sup) => sum + (sup.isComplimentary ? 0 : sup.amount), 0).toFixed(2)} €</div>
@@ -1306,6 +1396,80 @@ export default function OrderPage() {
             </Button>
             <Button onClick={saveNotes} className="bg-blue-600 hover:bg-blue-700">
               Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Menu Enfant Dialog */}
+      <Dialog open={menuEnfantDialogOpen} onOpenChange={setMenuEnfantDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Menu enfant</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            <div>
+              <Label className="text-slate-300">Choix du plat (obligatoire)</Label>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {menuEnfantOptions.map((option) => (
+                  <Button
+                    key={option}
+                    variant={menuEnfantChoice === option ? "default" : "outline"}
+                    onClick={() => setMenuEnfantChoice(option)}
+                    className={
+                      menuEnfantChoice === option
+                        ? "bg-blue-600 hover:bg-blue-700"
+                        : "bg-slate-700 border-slate-600 hover:bg-slate-600"
+                    }
+                  >
+                    {option}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-slate-300">Sirop à l'eau (optionnel)</Label>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {siropOptions.map((option) => (
+                  <Button
+                    key={option}
+                    variant={siropChoice === option ? "default" : "outline"}
+                    onClick={() => setSiropChoice(option)}
+                    className={
+                      siropChoice === option
+                        ? "bg-emerald-600 hover:bg-emerald-700"
+                        : "bg-slate-700 border-slate-600 hover:bg-slate-600"
+                    }
+                  >
+                    {option}
+                  </Button>
+                ))}
+              </div>
+              <div className="mt-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => setSiropChoice("")}
+                  className="text-slate-300 hover:text-white hover:bg-slate-700"
+                >
+                  Ignorer le sirop
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMenuEnfantDialogOpen(false)}
+              className="bg-slate-700 border-slate-600"
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleMenuEnfantConfirm}
+              disabled={!menuEnfantChoice}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+            >
+              Ajouter
             </Button>
           </DialogFooter>
         </DialogContent>

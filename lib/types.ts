@@ -177,6 +177,7 @@ export interface SalesRecord {
 export interface DailySales {
   date: string
   total_sales: number
+  total_sales_ht: number
   total_tax: number
   order_count: number
   average_ticket: number
@@ -202,6 +203,7 @@ export interface Supplement {
   order_id: string
   name: string
   amount: number
+  tax_rate?: number
   notes?: string
   is_complimentary: boolean
   complimentary_reason?: string

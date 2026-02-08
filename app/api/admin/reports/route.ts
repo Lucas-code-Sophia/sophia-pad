@@ -67,6 +67,21 @@ export async function GET(request: NextRequest) {
     )
     const totalOrders = (dailySales || []).length
     const averageTicket = totalOrders > 0 ? totalSales / totalOrders : 0
+    const cashOrders = (dailySales || []).filter((sale: any) => sale.payment_method === "cash").length
+    const cardOrders = (dailySales || []).filter((sale: any) => sale.payment_method === "card").length
+    const otherOrders = (dailySales || []).filter(
+      (sale: any) => sale.payment_method && !["cash", "card"].includes(sale.payment_method),
+    ).length
+
+    const cashAmount = (dailySales || [])
+      .filter((sale: any) => sale.payment_method === "cash")
+      .reduce((sum: number, sale: any) => sum + Number.parseFloat(sale.total_amount), 0)
+    const cardAmount = (dailySales || [])
+      .filter((sale: any) => sale.payment_method === "card")
+      .reduce((sum: number, sale: any) => sum + Number.parseFloat(sale.total_amount), 0)
+    const otherAmount = (dailySales || [])
+      .filter((sale: any) => sale.payment_method && !["cash", "card"].includes(sale.payment_method))
+      .reduce((sum: number, sale: any) => sum + Number.parseFloat(sale.total_amount), 0)
 
     // Calculate complimentary stats
     const totalComplimentaryAmount = (dailySales || []).reduce(
@@ -78,8 +93,67 @@ export async function GET(request: NextRequest) {
       0,
     )
 
-    // Calculate TVA (assuming 20% for most items, 10% for some)
-    const totalTax = totalSales * 0.18 // Approximate
+    // Calculate TVA precisely from item tax rates
+    const orderIds = (dailySales || []).map((sale: any) => sale.order_id).filter(Boolean)
+    const orderIdToServer = new Map(
+      (dailySales || []).map((sale: any) => [sale.order_id, sale.server_name || "Inconnu"]),
+    )
+
+    let totalTax = 0
+    let rate10Sales = 0
+    let rate20Sales = 0
+    const taxByServer: Record<string, number> = {}
+
+    if (orderIds.length > 0) {
+      const { data: orderItems } = await supabase
+        .from("order_items")
+        .select("order_id, menu_item_id, quantity, price, is_complimentary")
+        .in("order_id", orderIds)
+
+      const menuItemIds = Array.from(new Set((orderItems || []).map((item: any) => item.menu_item_id).filter(Boolean)))
+
+      const { data: menuItems } = await supabase
+        .from("menu_items")
+        .select("id, tax_rate")
+        .in("id", menuItemIds)
+
+      const menuItemTaxMap = new Map((menuItems || []).map((item: any) => [item.id, Number(item.tax_rate) || 0]))
+
+      for (const item of orderItems || []) {
+        if (item.is_complimentary) continue
+        const rate = menuItemTaxMap.get(item.menu_item_id) || 0
+        const lineTotal = Number(item.price) * Number(item.quantity || 0)
+        const lineTax = rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
+
+        totalTax += lineTax
+        const serverName = orderIdToServer.get(item.order_id) || "Inconnu"
+        taxByServer[serverName] = (taxByServer[serverName] || 0) + lineTax
+        if (rate === 10) rate10Sales += lineTotal
+        if (rate === 20) rate20Sales += lineTotal
+      }
+
+      const { data: supplements } = await supabase
+        .from("supplements")
+        .select("order_id, amount, tax_rate, is_complimentary")
+        .in("order_id", orderIds)
+
+      for (const sup of supplements || []) {
+        if (sup.is_complimentary) continue
+        const rate = Number(sup.tax_rate ?? 10)
+        const lineTotal = Number(sup.amount) || 0
+        const lineTax = rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
+
+        totalTax += lineTax
+        const serverName = orderIdToServer.get(sup.order_id) || "Inconnu"
+        taxByServer[serverName] = (taxByServer[serverName] || 0) + lineTax
+        if (rate === 10) rate10Sales += lineTotal
+        if (rate === 20) rate20Sales += lineTotal
+      }
+    }
+
+    const totalSalesHT = totalSales - totalTax
+    const taxRate10Share = totalSales > 0 ? (rate10Sales / totalSales) * 100 : 0
+    const taxRate20Share = totalSales > 0 ? (rate20Sales / totalSales) * 100 : 0
 
     // Fetch top dishes
     const { data: orderItems } = await supabase
@@ -136,6 +210,7 @@ export async function GET(request: NextRequest) {
 
     const serverStats = Object.values(serverStatsMap).map((server: any) => ({
       ...server,
+      total_sales_ht: server.total_sales - (taxByServer[server.server_name] || 0),
       average_ticket: server.order_count > 0 ? server.total_sales / server.order_count : 0,
       complimentary_percentage: server.total_sales > 0 ? (server.complimentary_amount / server.total_sales) * 100 : 0,
     }))
@@ -146,12 +221,27 @@ export async function GET(request: NextRequest) {
       serverStats,
       stats: {
         totalSales,
+        totalSalesHT,
         totalOrders,
         averageTicket,
         totalTax,
+        taxRate10Share,
+        taxRate20Share,
         totalComplimentaryAmount,
         totalComplimentaryCount,
         complimentaryPercentage: totalSales > 0 ? (totalComplimentaryAmount / totalSales) * 100 : 0,
+        paymentMix: {
+          volume: {
+            cash: totalOrders > 0 ? (cashOrders / totalOrders) * 100 : 0,
+            card: totalOrders > 0 ? (cardOrders / totalOrders) * 100 : 0,
+            other: totalOrders > 0 ? (otherOrders / totalOrders) * 100 : 0,
+          },
+          value: {
+            cash: totalSales > 0 ? (cashAmount / totalSales) * 100 : 0,
+            card: totalSales > 0 ? (cardAmount / totalSales) * 100 : 0,
+            other: totalSales > 0 ? (otherAmount / totalSales) * 100 : 0,
+          },
+        },
       },
     })
   } catch (error) {

@@ -24,9 +24,46 @@ export async function GET(request: NextRequest) {
     const orderCount = sales?.length || 0
     const averageTicket = orderCount > 0 ? totalRevenue / orderCount : 0
 
-    // Calculate TVA (assuming 10% tax rate for restaurant)
-    const totalTax = totalRevenue * 0.1
-    // </CHANGE>
+    // Calculate TVA precisely from item tax rates
+    const orderIds = (sales || []).map((sale: any) => sale.order_id).filter(Boolean)
+    let totalTax = 0
+
+    if (orderIds.length > 0) {
+      const { data: orderItems } = await supabase
+        .from("order_items")
+        .select("order_id, menu_item_id, quantity, price, is_complimentary")
+        .in("order_id", orderIds)
+
+      const menuItemIds = Array.from(new Set((orderItems || []).map((item: any) => item.menu_item_id).filter(Boolean)))
+
+      const { data: menuItems } = await supabase
+        .from("menu_items")
+        .select("id, tax_rate")
+        .in("id", menuItemIds)
+
+      const menuItemTaxMap = new Map((menuItems || []).map((item: any) => [item.id, Number(item.tax_rate) || 0]))
+
+      for (const item of orderItems || []) {
+        if (item.is_complimentary) continue
+        const rate = menuItemTaxMap.get(item.menu_item_id) || 0
+        const lineTotal = Number(item.price) * Number(item.quantity || 0)
+        const lineTax = rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
+        totalTax += lineTax
+      }
+
+      const { data: supplements } = await supabase
+        .from("supplements")
+        .select("order_id, amount, tax_rate, is_complimentary")
+        .in("order_id", orderIds)
+
+      for (const sup of supplements || []) {
+        if (sup.is_complimentary) continue
+        const rate = Number(sup.tax_rate ?? 10)
+        const lineTotal = Number(sup.amount) || 0
+        const lineTax = rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
+        totalTax += lineTax
+      }
+    }
 
     // Group by server
     const serverStats = sales?.reduce((acc: any, sale) => {

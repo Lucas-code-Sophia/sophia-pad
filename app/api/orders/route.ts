@@ -48,6 +48,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const normalizeName = (name: string) => name.trim().toLowerCase().replace(/’/g, "'")
+    const menuItemIds = Array.from(new Set(items.map((item: any) => item.menuItemId).filter(Boolean)))
+    const { data: menuItems } = await supabase
+      .from("menu_items")
+      .select("id, name")
+      .in("id", menuItemIds)
+    const menuItemNameMap = new Map((menuItems || []).map((item: any) => [item.id, normalizeName(item.name)]))
+    const shouldZeroPrice = (item: any) => {
+      const menuName = menuItemNameMap.get(item.menuItemId) || ""
+      const notes = String(item.notes || "").toLowerCase()
+      return menuName === "sirop à l'eau" && notes.includes("inclus menu enfant")
+    }
+
     // Gérer les articles existants et nouveaux séparément
     const existingItems = items.filter((item: any) => !item.cartItemId.startsWith('temp-'))
     const newItems = items.filter((item: any) => item.cartItemId.startsWith('temp-'))
@@ -57,7 +70,7 @@ export async function POST(request: NextRequest) {
       const updatePayload: Record<string, any> = {
         menu_item_id: item.menuItemId,
         quantity: item.quantity,
-        price: item.price,
+        price: shouldZeroPrice(item) ? 0 : item.price,
         status: item.status,
         notes: item.notes,
         fired_at: item.status === "fired" ? new Date().toISOString() : null,
@@ -92,7 +105,7 @@ export async function POST(request: NextRequest) {
           menu_item_id: item.menuItemId,
           cart_item_id: item.cartItemId,
           quantity: item.quantity,
-          price: item.price,
+          price: shouldZeroPrice(item) ? 0 : item.price,
           status: item.status,
           notes: item.notes,
           fired_at: item.status === "fired" ? new Date().toISOString() : null,

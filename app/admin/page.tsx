@@ -296,12 +296,13 @@ export default function AdminPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
         <Card className="bg-gradient-to-br from-blue-600 to-blue-700 border-blue-500">
           <CardHeader className="pb-2 p-3 sm:p-6">
-            <CardTitle className="text-xs sm:text-sm font-medium text-blue-100">Ventes du jour</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium text-blue-100">Ventes du jour (TTC)</CardTitle>
           </CardHeader>
           <CardContent className="p-3 sm:p-6 pt-0">
             <div className="text-xl sm:text-3xl font-bold text-white">
               {dailySales?.total_sales.toFixed(2) || "0.00"}€
             </div>
+            <p className="text-xs text-blue-200 mt-1">HT : {dailySales?.total_sales_ht.toFixed(2) || "0.00"}€</p>
             <p className="text-xs text-blue-200 mt-1">
               <TrendingUp className="h-3 w-3 inline mr-1" />
               {dailySales?.order_count || 0} commandes

@@ -360,58 +360,90 @@ export default function BillPage() {
     const printWindow = window.open("", "_blank")
     if (printWindow) {
       const total = calculateTotal()
-      const complimentaryItems = items.filter((item) => item.is_complimentary)
-      const complimentarySupplements = supplements.filter((sup) => sup.is_complimentary)
+      const formatCurrency = (value: number) => `${value.toFixed(2)} €`
+
+      const taxBreakdown = items.reduce(
+        (acc, item) => {
+          if (item.is_complimentary) return acc
+          const rate = Number(item.menu_item?.tax_rate) || 0
+          const lineTotal = item.price * item.quantity
+          const lineTax = rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
+          if (rate === 10) acc.tax10 += lineTax
+          if (rate === 20) acc.tax20 += lineTax
+          return acc
+        },
+        { tax10: 0, tax20: 0 },
+      )
+
+      const supplementTax = supplements.reduce(
+        (acc, sup) => {
+          if (sup.is_complimentary) return acc
+          const rate = Number(sup.tax_rate ?? 10)
+          const lineTotal = sup.amount
+          const lineTax = rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
+          if (rate === 10) acc.tax10 += lineTax
+          if (rate === 20) acc.tax20 += lineTax
+          return acc
+        },
+        { tax10: 0, tax20: 0 },
+      )
+
+      const tax10 = taxBreakdown.tax10 + supplementTax.tax10
+      const tax20 = taxBreakdown.tax20 + supplementTax.tax20
+      const subtotal = Math.max(0, total - tax10 - tax20)
 
       printWindow.document.write(`
         <html>
           <head>
             <title>Addition - Table ${table?.table_number}</title>
             <style>
-              body { font-family: monospace; padding: 20px; max-width: 400px; margin: 0 auto; }
-              h1 { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
-              .item { display: flex; justify-content: space-between; margin: 8px 0; }
+              body { font-family: monospace; padding: 12px; max-width: 320px; margin: 0 auto; }
+              .divider { border-top: 1px dashed #000; margin: 8px 0; }
+              .item { display: flex; justify-content: space-between; margin: 4px 0; }
+              .note { font-size: 10px; color: #333; font-style: italic; margin-left: 8px; }
               .complimentary { color: #666; text-decoration: line-through; }
-              .total { border-top: 2px solid #000; margin-top: 20px; padding-top: 10px; font-size: 1.2em; font-weight: bold; }
-              .footer { text-align: center; margin-top: 30px; border-top: 1px solid #000; padding-top: 10px; }
+              .total { border-top: 1px solid #000; margin-top: 8px; padding-top: 6px; font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; }
+              .kv { display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0; }
+              .footer { text-align: center; margin-top: 12px; font-size: 10px; }
             </style>
           </head>
           <body>
-            <h1>ADDITION</h1>
-            <p style="text-align: center;">Table ${table?.table_number}</p>
-            <p style="text-align: center;">${new Date().toLocaleString("fr-FR")}</p>
-            <div style="margin: 20px 0;">
+            <div style="text-align:center;font-weight:bold;font-size:16px;">RESTAURANT SOPHIA</div>
+            <div style="text-align:center;font-size:10px;">67 Boulevard de la plage</div>
+            <div style="text-align:center;font-size:10px;">33970, Cap-Ferret</div>
+            <div style="text-align:center;font-size:10px;">SIRET : 940 771 488 00027</div>
+            <div class="divider"></div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;">
+              <div style="font-weight:bold;font-size:12px;">Table ${table?.table_number}</div>
+              <div>Serveur : ${user?.name || "-"}</div>
+            </div>
+            <div style="font-size:10px;color:#333;">${new Date().toLocaleString("fr-FR")}</div>
+            <div style="margin: 10px 0;">
               ${items
                 .map(
                   (item) => `
-                <div class="item ${item.is_complimentary ? "complimentary" : ""}">
-                  <span>${item.quantity}x ${item.menu_item?.name}${item.is_complimentary ? " (OFFERT)" : ""}</span>
-                  <span>${item.is_complimentary ? "0.00" : (item.price * item.quantity).toFixed(2)} €</span>
+                <div>
+                  <div class="item ${item.is_complimentary ? "complimentary" : ""}">
+                    <span>${item.quantity}x ${item.menu_item?.name}${item.is_complimentary ? " (OFFERT)" : ""}</span>
+                    <span>${item.is_complimentary ? "0.00" : (item.price * item.quantity).toFixed(2)} €</span>
+                  </div>
+                  ${item.notes ? `<div class="note">↳ ${item.notes}</div>` : ""}
                 </div>
               `,
                 )
                 .join("")}
             </div>
+            <div class="kv"><span>Sous total</span><span>${formatCurrency(subtotal)}</span></div>
+            <div class="kv"><span>TVA 10%</span><span>${formatCurrency(tax10)}</span></div>
+            <div class="kv"><span>TVA 20%</span><span>${formatCurrency(tax20)}</span></div>
             <div class="total">
-              <div style="display: flex; justify-content: space-between;">
-                <span>TOTAL</span>
-                <span>${total.toFixed(2)} €</span>
-              </div>
+              <span>TOTAL</span>
+              <span>${formatCurrency(total)}</span>
             </div>
-            ${
-              complimentaryItems.length > 0 || complimentarySupplements.length > 0
-                ? `
-              <div style="margin-top: 20px; padding: 10px; border: 1px solid #ccc;">
-                <p style="font-weight: bold;">Articles offerts:</p>
-                ${complimentaryItems.map((item) => `<p>- ${item.quantity}x ${item.menu_item?.name}</p>`).join("")}
-                ${complimentarySupplements.map((sup) => `<p>- ${sup.name}</p>`).join("")}
-              </div>
-            `
-                : ""
-            }
-            <div class="footer">
-              <p>Merci de votre visite !</p>
-            </div>
+            <div class="divider"></div>
+            <div class="footer">Merci de votre visite chez SOPHIA</div>
+            <div class="footer">Tel pour réserver : 05 57 18 21 88</div>
+            <div class="footer">À très vite chez nous !</div>
           </body>
         </html>
       `)

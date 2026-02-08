@@ -48,12 +48,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const normalizeName = (name: string) => name.trim().toLowerCase().replace(/’/g, "'")
+    const menuItemIds = Array.from(new Set(items.map((item: any) => item.menuItemId).filter(Boolean)))
+    const { data: menuItems } = await supabase
+      .from("menu_items")
+      .select("id, name")
+      .in("id", menuItemIds)
+    const menuItemNameMap = new Map((menuItems || []).map((item: any) => [item.id, normalizeName(item.name)]))
+    const shouldZeroPrice = (item: any) => {
+      const menuName = menuItemNameMap.get(item.menuItemId) || ""
+      const notes = String(item.notes || "").toLowerCase()
+      return menuName === "sirop à l'eau" && notes.includes("inclus menu enfant")
+    }
+
     // Insert to_follow items in database (but don't fire them)
     const orderItems = items.map((item: any) => ({
       order_id: currentOrderId,
       menu_item_id: item.menuItemId,
       quantity: item.quantity,
-      price: item.price,
+      price: shouldZeroPrice(item) ? 0 : item.price,
       status: item.status, // to_follow_1 or to_follow_2
       notes: item.notes,
       fired_at: null, // Don't fire yet

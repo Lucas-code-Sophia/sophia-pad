@@ -10,6 +10,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
+    const normalizeName = (name: string) => name.trim().toLowerCase().replace(/’/g, "'")
+    const menuItemIds = Array.from(new Set(items.map((item: any) => item.menuItemId).filter(Boolean)))
+    const { data: menuItems } = await supabase
+      .from("menu_items")
+      .select("id, name")
+      .in("id", menuItemIds)
+    const menuItemNameMap = new Map((menuItems || []).map((item: any) => [item.id, normalizeName(item.name)]))
+    const shouldZeroPrice = (item: any) => {
+      const menuName = menuItemNameMap.get(item.menuItemId) || ""
+      const notes = String(item.notes || "").toLowerCase()
+      return menuName === "sirop à l'eau" && notes.includes("inclus menu enfant")
+    }
+
     // Mettre à jour les articles existants au lieu de les réinsérer
     const updatePromises = items.map(async (item: any) => {
       if (item.quantity === 0) {
@@ -30,7 +43,7 @@ export async function POST(request: NextRequest) {
         const updatePayload: Record<string, any> = {
           menu_item_id: item.menuItemId,
           quantity: item.quantity,
-          price: item.price,
+          price: shouldZeroPrice(item) ? 0 : item.price,
           status: item.status === "deleted" ? "deleted" : item.status,
           notes: item.notes,
           fired_at: item.status === "fired" ? new Date().toISOString() : null,

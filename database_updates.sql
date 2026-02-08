@@ -24,6 +24,10 @@ ALTER TABLE daily_sales
 ADD COLUMN IF NOT EXISTS complimentary_amount DECIMAL(10,2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS complimentary_count INTEGER DEFAULT 0;
 
+-- 3b. Ajouter la TVA par défaut sur les suppléments
+ALTER TABLE supplements
+ADD COLUMN IF NOT EXISTS tax_rate DECIMAL(5,2) DEFAULT 10;
+
 -- 4. Créer des index pour optimiser les performances
 CREATE INDEX IF NOT EXISTS idx_tables_opened_by ON tables(opened_by);
 CREATE INDEX IF NOT EXISTS idx_order_items_created_by_server_id ON order_items(created_by_server_id);
