@@ -32,7 +32,7 @@ export interface Table {
   position_x: number
   position_y: number
   status: "available" | "occupied" | "reserved"
-  location: "T" | "I" | "C" | "H" | "O" // T=Terrace, I=Interior, C=Canapé, H=Table d'Hote, O=Olivier
+  location: "T" | "I" | "C" | "H" | "O" | "B" // T=Terrace, I=Interior, C=Canapé, H=Table d'Hote, O=Olivier, B=Bar
   opened_by?: string // UUID du serveur qui a ouvert la table
   opened_by_name?: string // Nom du serveur qui a ouvert la table
   archived?: boolean

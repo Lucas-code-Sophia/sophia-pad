@@ -292,14 +292,16 @@ export default function FloorPlanLayoutAdminPage() {
   )
 
   const addTableToCanvas = (table: Table) => {
+    const isOlivier = table.location === "O"
     const newItem: VisualFloorPlanItem = {
       id: `t_${table.id}_${Date.now()}`,
       type: "table",
       tableId: table.id,
       x: 45,
       y: 45,
-      width: TABLE_DEFAULT_W,
-      height: TABLE_DEFAULT_H,
+      width: isOlivier ? 7 : TABLE_DEFAULT_W,
+      height: isOlivier ? 7 : TABLE_DEFAULT_H,
+      shape: isOlivier ? "round" : undefined,
     }
     setItems((prev) => [...prev, newItem])
     setSelectedItemIds(new Set([newItem.id]))
@@ -546,6 +548,7 @@ export default function FloorPlanLayoutAdminPage() {
         : getTableLabel(item.tableId)
       : item.label || ""
     const bgColor = isMissing ? "#991b1b" : isTable ? "#0ea5e9" : item.color || "#64748b"
+    const isRound = item.shape === "round"
 
     return (
       <div
@@ -559,7 +562,7 @@ export default function FloorPlanLayoutAdminPage() {
           width: `${item.width}%`,
           height: `${item.height}%`,
           backgroundColor: bgColor,
-          borderRadius: isTable ? "6px" : "4px",
+          borderRadius: isRound ? "50%" : isTable ? "6px" : "4px",
           transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
           fontSize: isTable ? "clamp(9px, 1.2vw, 14px)" : "clamp(8px, 1vw, 12px)",
           border: isMissing
@@ -817,6 +820,32 @@ export default function FloorPlanLayoutAdminPage() {
                   onChange={(e) => updateItem(selectedItem.id, { height: Math.max(2, Number(e.target.value)) })}
                   className="bg-slate-700 border-slate-600 text-xs h-7"
                 />
+              </div>
+            </div>
+            {/* Shape toggle (for all item types) */}
+            <div>
+              <Label className="text-xs text-slate-400">Forme</Label>
+              <div className="flex gap-1.5 mt-1">
+                <button
+                  onClick={() => updateItem(selectedItem.id, { shape: undefined })}
+                  className={`flex-1 h-7 rounded text-xs font-medium border transition-all ${
+                    !selectedItem.shape || selectedItem.shape === "rect"
+                      ? "bg-blue-600 border-blue-500 text-white"
+                      : "bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  ▭ Rectangle
+                </button>
+                <button
+                  onClick={() => updateItem(selectedItem.id, { shape: "round" })}
+                  className={`flex-1 h-7 rounded text-xs font-medium border transition-all ${
+                    selectedItem.shape === "round"
+                      ? "bg-blue-600 border-blue-500 text-white"
+                      : "bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  ● Rond
+                </button>
               </div>
             </div>
             {selectedItem.type === "decoration" && (
