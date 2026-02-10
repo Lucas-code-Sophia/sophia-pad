@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, TrendingUp, DollarSign, ShoppingBag, Calendar, Gift, Users, Target } from "lucide-react"
+import { ArrowLeft, TrendingUp, DollarSign, ShoppingBag, Calendar, Gift, Users, Target, Clock } from "lucide-react"
 import {
   LineChart,
   Line,
@@ -28,6 +28,13 @@ interface SalesData {
   date: string
   total: number
   orders: number
+}
+
+interface HourlySalesData {
+  hour: string
+  total: number
+  orders: number
+  average: number
 }
 
 interface TopDish {
@@ -54,6 +61,7 @@ export default function ReportsPage() {
   const [customStartDate, setCustomStartDate] = useState("")
   const [customEndDate, setCustomEndDate] = useState("")
   const [salesData, setSalesData] = useState<SalesData[]>([])
+  const [hourlySales, setHourlySales] = useState<HourlySalesData[]>([])
   const [topDishes, setTopDishes] = useState<TopDish[]>([])
   const [serverStats, setServerStats] = useState<ServerStats[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,6 +70,9 @@ export default function ReportsPage() {
     totalSalesHT: 0,
     totalOrders: 0,
     averageTicket: 0,
+    dailyAverage: 0,
+    activeDays: 0,
+    totalPeriodDays: 0,
     totalTax: 0,
     taxRate10Share: 0,
     taxRate20Share: 0,
@@ -103,13 +114,17 @@ export default function ReportsPage() {
       if (response.ok) {
         const data = await response.json()
         setSalesData(data.salesData || [])
+        setHourlySales(data.hourlySales || [])
         setTopDishes(data.topDishes || [])
         setServerStats(data.serverStats || [])
         setStats(data.stats || { 
           totalSales: 0, 
           totalSalesHT: 0,
           totalOrders: 0, 
-          averageTicket: 0, 
+          averageTicket: 0,
+          dailyAverage: 0,
+          activeDays: 0,
+          totalPeriodDays: 0,
           totalTax: 0, 
           taxRate10Share: 0,
           taxRate20Share: 0,
@@ -252,7 +267,9 @@ export default function ReportsPage() {
           <CardContent>
             <div className="text-2xl sm:text-3xl font-bold text-white">{stats.totalSales.toFixed(2)} €</div>
             <div className="text-xs text-blue-300 mt-1">HT : {stats.totalSalesHT.toFixed(2)} €</div>
-            <div className="text-xs text-blue-400 mt-1">+{((stats.totalSales / (stats.totalSales - stats.totalComplimentaryAmount)) * 100 - 100).toFixed(1)}% vs objectif</div>
+            {stats.activeDays > 0 && period !== "today" && (
+              <div className="text-xs text-blue-400 mt-1">Moy : {stats.dailyAverage.toFixed(2)} €/jour</div>
+            )}
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-green-900/20 to-green-800/20 border-green-700/50 backdrop-blur-sm">
@@ -276,7 +293,13 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl sm:text-3xl font-bold text-white">{stats.totalOrders}</div>
-            <div className="text-xs text-purple-400 mt-1">Total périodes</div>
+            {period !== "today" && stats.totalPeriodDays > 1 ? (
+              <div className="text-xs text-purple-400 mt-1">
+                {stats.activeDays}j d'activité / {stats.totalPeriodDays}j
+              </div>
+            ) : (
+              <div className="text-xs text-purple-400 mt-1">Total période</div>
+            )}
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-orange-900/20 to-orange-800/20 border-orange-700/50 backdrop-blur-sm">
@@ -359,6 +382,75 @@ export default function ReportsPage() {
                   name="Ventes (€)"
                 />
               </LineChart>
+            </ResponsiveContainer>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+
+      {/* Hourly sales chart */}
+      <Card className="bg-slate-800 border-slate-700 mb-6">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <Clock className="h-5 w-5 text-emerald-400" />
+            Ventes par heure {period !== "today" && stats.activeDays > 0 && `(moyenne sur ${stats.activeDays}j d'activité)`}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ChartContainer
+            config={{
+              total: {
+                label: period === "today" ? "Ventes (€)" : "Moy/jour (€)",
+                color: "#10b981",
+              },
+            }}
+            className="h-[280px] [&_.recharts-legend-item-text]:fill-slate-200 [&_.recharts-cartesian-axis-tick_text]:fill-slate-100"
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={hourlySales}>
+                <defs>
+                  <linearGradient id="hourlyBarGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#059669" stopOpacity={0.5} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.25)" />
+                <XAxis
+                  dataKey="hour"
+                  stroke="rgba(248,250,252,0.95)"
+                  tick={{ fill: "#f8fafc", fontSize: 12 }}
+                  tickLine={{ stroke: "rgba(248,250,252,0.8)" }}
+                  axisLine={{ stroke: "rgba(248,250,252,0.7)" }}
+                />
+                <YAxis
+                  stroke="rgba(248,250,252,0.95)"
+                  tick={{ fill: "#f8fafc", fontSize: 12 }}
+                  tickLine={{ stroke: "rgba(248,250,252,0.8)" }}
+                  axisLine={{ stroke: "rgba(248,250,252,0.7)" }}
+                  tickFormatter={(value) => `${value}€`}
+                />
+                <ChartTooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null
+                    const data = payload[0].payload as HourlySalesData
+                    return (
+                      <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-lg">
+                        <p className="text-white font-medium">{data.hour}</p>
+                        <p className="text-emerald-400">CA : {data.total.toFixed(2)} €</p>
+                        {period !== "today" && (
+                          <p className="text-emerald-300 text-xs">Moy/jour : {data.average.toFixed(2)} €</p>
+                        )}
+                        <p className="text-slate-400 text-xs">{data.orders} commande{data.orders > 1 ? "s" : ""}</p>
+                      </div>
+                    )
+                  }}
+                />
+                <Bar
+                  dataKey={period === "today" ? "total" : "average"}
+                  fill="url(#hourlyBarGradient)"
+                  name={period === "today" ? "Ventes (€)" : "Moy/jour (€)"}
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
             </ResponsiveContainer>
           </ChartContainer>
         </CardContent>

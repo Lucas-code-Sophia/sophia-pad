@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import type { Table, MenuCategory, MenuItem, Order, OrderItem } from "@/lib/types"
@@ -94,8 +94,36 @@ export default function OrderPage() {
     type: "cart",
   })
   const [complimentaryReason, setComplimentaryReason] = useState("")
+  const [elapsedTime, setElapsedTime] = useState("")
 
-  const normalizeName = (name: string) => name.trim().toLowerCase().replace(/’/g, "'")
+  // Timer : temps écoulé depuis l'ouverture de la commande
+  useEffect(() => {
+    if (!currentOrder?.created_at) {
+      setElapsedTime("")
+      return
+    }
+
+    const computeElapsed = () => {
+      const start = new Date(currentOrder.created_at).getTime()
+      const now = Date.now()
+      const diffMs = Math.max(0, now - start)
+      const totalMinutes = Math.floor(diffMs / 60000)
+      const hours = Math.floor(totalMinutes / 60)
+      const minutes = totalMinutes % 60
+
+      if (hours > 0) {
+        setElapsedTime(`${hours}h${minutes.toString().padStart(2, "0")}`)
+      } else {
+        setElapsedTime(`${minutes}min`)
+      }
+    }
+
+    computeElapsed()
+    const interval = setInterval(computeElapsed, 30000) // Refresh toutes les 30s
+    return () => clearInterval(interval)
+  }, [currentOrder?.created_at])
+
+  const normalizeName = (name: string) => name.trim().toLowerCase().replace(/'/g, "'")
   const menuEnfantOptions = ["Pâtes poulet", "Frites poulet"]
   const siropOptions = ["Menthe", "Citron", "Pêche", "Grenadine"]
   const getCartItemPrice = (item: CartItem) => item.price ?? item.menuItem?.price ?? 0
@@ -996,7 +1024,15 @@ export default function OrderPage() {
         </Button>
         <div className="text-center flex-1">
           <h1 className="text-lg sm:text-2xl font-bold text-white">Table {table?.table_number}</h1>
-          <p className="text-xs sm:text-sm text-slate-400">{table?.seats} couverts</p>
+          <div className="flex items-center justify-center gap-2">
+            <p className="text-xs sm:text-sm text-slate-400">{table?.seats} couverts</p>
+            {elapsedTime && (
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-300 border border-blue-500/30">
+                <Clock className="h-3 w-3" />
+                {elapsedTime}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {currentOrder?.id && (

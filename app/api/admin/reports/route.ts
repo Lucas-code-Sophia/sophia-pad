@@ -215,8 +215,41 @@ export async function GET(request: NextRequest) {
       complimentary_percentage: server.total_sales > 0 ? (server.complimentary_amount / server.total_sales) * 100 : 0,
     }))
 
+    // ── Hourly sales breakdown ──
+    const hourlyMap: Record<number, { hour: number; total: number; orders: number }> = {}
+    for (let h = 0; h < 24; h++) {
+      hourlyMap[h] = { hour: h, total: 0, orders: 0 }
+    }
+    const daysInPeriod = new Set<string>()
+    for (const sale of dailySales || []) {
+      if (!sale.created_at) continue
+      const d = new Date(sale.created_at)
+      const hour = d.getHours()
+      hourlyMap[hour].total += Number.parseFloat(sale.total_amount)
+      hourlyMap[hour].orders += 1
+      daysInPeriod.add(d.toISOString().split("T")[0])
+    }
+    const numDays = Math.max(daysInPeriod.size, 1)
+    const hourlySales = Object.values(hourlyMap)
+      .filter((h) => h.total > 0 || (h.hour >= 10 && h.hour <= 23)) // Only show relevant hours
+      .map((h) => ({
+        hour: `${h.hour}h`,
+        total: Math.round(h.total * 100) / 100,
+        orders: h.orders,
+        average: Math.round((h.total / numDays) * 100) / 100,
+      }))
+
+    // ── Days open / closed calculation ──
+    const activeDays = daysInPeriod.size
+    // Calculate total calendar days in the period
+    const periodStartMs = period === "today" ? new Date(startDateStr).getTime() : startDate.getTime()
+    const periodEndMs = period === "today" ? new Date(endDateStr).getTime() : endDate.getTime()
+    const totalPeriodDays = Math.max(1, Math.round((periodEndMs - periodStartMs) / (1000 * 60 * 60 * 24)) + 1)
+    const dailyAverage = activeDays > 0 ? totalSales / activeDays : 0
+
     return NextResponse.json({
       salesData,
+      hourlySales,
       topDishes,
       serverStats,
       stats: {
@@ -224,6 +257,9 @@ export async function GET(request: NextRequest) {
         totalSalesHT,
         totalOrders,
         averageTicket,
+        dailyAverage,
+        activeDays,
+        totalPeriodDays,
         totalTax,
         taxRate10Share,
         taxRate20Share,
