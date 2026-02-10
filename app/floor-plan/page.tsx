@@ -24,6 +24,8 @@ import {
   type FloorPlanLayout,
   type FloorPlanLayoutId,
   type TableLocation,
+  type VisualFloorPlan,
+  type UserFloorPlanAssignments,
 } from "@/lib/floor-plan-layouts"
 import { toast } from "@/components/ui/use-toast"
 
@@ -49,6 +51,8 @@ export default function FloorPlanPage() {
   })
   const [activeLayout, setActiveLayout] = useState<FloorPlanLayoutId>(DEFAULT_FLOOR_PLAN_LAYOUT)
   const [customLayouts, setCustomLayouts] = useState<FloorPlanLayout[]>([])
+  const [visualLayouts, setVisualLayouts] = useState<VisualFloorPlan[]>([])
+  const [userAssignments, setUserAssignments] = useState<UserFloorPlanAssignments>({ assignments: {}, default_layout: "" })
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -127,11 +131,15 @@ export default function FloorPlanPage() {
       fetchReservationsForToday()
       fetchLayoutSetting()
       fetchLayouts()
+      fetchVisualLayouts()
+      fetchUserAssignments()
       // Refresh periodically
       const interval = setInterval(fetchTables, 5000) // Augmenté à 5 secondes
       const rInterval = setInterval(fetchReservationsForToday, 15000)
       const layoutInterval = setInterval(fetchLayoutSetting, 30000)
       const layoutsInterval = setInterval(fetchLayouts, 60000)
+      const visualInterval = setInterval(fetchVisualLayouts, 60000)
+      const assignInterval = setInterval(fetchUserAssignments, 60000)
       
       // Rafraîchir quand la page redevient visible (retour d'une autre page)
       const handleVisibilityChange = () => {
@@ -140,6 +148,8 @@ export default function FloorPlanPage() {
           fetchReservationsForToday()
           fetchLayoutSetting()
           fetchLayouts()
+          fetchVisualLayouts()
+          fetchUserAssignments()
         }
       }
       
@@ -150,6 +160,8 @@ export default function FloorPlanPage() {
         clearInterval(rInterval)
         clearInterval(layoutInterval)
         clearInterval(layoutsInterval)
+        clearInterval(visualInterval)
+        clearInterval(assignInterval)
         document.removeEventListener('visibilitychange', handleVisibilityChange)
       }
     }
@@ -231,6 +243,33 @@ export default function FloorPlanPage() {
       if (response.ok) {
         const data = await response.json()
         setCustomLayouts(Array.isArray(data?.layouts) ? data.layouts : [])
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const fetchVisualLayouts = async () => {
+    try {
+      const response = await fetch("/api/settings/floor-plan-visual-layouts")
+      if (response.ok) {
+        const data = await response.json()
+        setVisualLayouts(Array.isArray(data?.layouts) ? data.layouts : [])
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const fetchUserAssignments = async () => {
+    try {
+      const response = await fetch("/api/settings/user-floor-plan-assignments")
+      if (response.ok) {
+        const data = await response.json()
+        setUserAssignments({
+          assignments: data?.assignments || {},
+          default_layout: data?.default_layout || "",
+        })
       }
     } catch (e) {
       // ignore
@@ -762,7 +801,119 @@ export default function FloorPlanPage() {
     </>
   )
 
+  // ─── Visual layout rendering ───
+
+  const renderVisualLayout = (layout: VisualFloorPlan) => {
+    const getStatusColorVisual = (status: string) => {
+      switch (status) {
+        case "available": return "#16a34a"
+        case "occupied": return "#dc2626"
+        case "reserved": return "#ca8a04"
+        default: return "#475569"
+      }
+    }
+
+    return (
+      <>
+        {renderMyTablesSection()}
+        <div
+          className="relative w-full rounded-lg overflow-hidden bg-[#c8edf5]"
+          style={{
+            aspectRatio: "16 / 10",
+          }}
+        >
+          {layout.items.map((item) => {
+            if (item.type === "decoration") {
+              return (
+                <div
+                  key={item.id}
+                  className="absolute flex items-center justify-center text-white font-bold select-none pointer-events-none"
+                  style={{
+                    left: `${item.x}%`,
+                    top: `${item.y}%`,
+                    width: `${item.width}%`,
+                    height: `${item.height}%`,
+                    backgroundColor: item.color || "#64748b",
+                    borderRadius: "4px",
+                    fontSize: "clamp(8px, 1.2vw, 14px)",
+                    opacity: 0.8,
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
+                  }}
+                >
+                  <span className="truncate px-1">{item.label}</span>
+                </div>
+              )
+            }
+
+            // Table item
+            const table = tables.find((t) => t.id === item.tableId)
+            if (!table) return null
+            const status = getTableStatus(table)
+            const bgColor = getStatusColorVisual(status)
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleTableClick(table)}
+                className="absolute flex flex-col items-center justify-center text-white font-bold select-none cursor-pointer transition-transform hover:scale-105 active:scale-95"
+                style={{
+                  left: `${item.x}%`,
+                  top: `${item.y}%`,
+                  width: `${item.width}%`,
+                  height: `${item.height}%`,
+                  backgroundColor: bgColor,
+                  borderRadius: "6px",
+                  fontSize: "clamp(9px, 1.2vw, 16px)",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+                  transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
+                }}
+              >
+                <span className="leading-tight">{table.table_number}</span>
+                {getTodaySummary(table.id) && (
+                  <span className="text-[8px] sm:text-[10px] opacity-90 leading-tight">{getTodaySummary(table.id)}</span>
+                )}
+                {table.status === "occupied" && getServerName(table) && (
+                  <span className="absolute top-0.5 right-0.5 text-[7px] sm:text-[9px] bg-black/50 px-0.5 rounded text-white/90">
+                    {getServerName(table)}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </>
+    )
+  }
+
+  // ─── Resolve which layout to use for current user ───
+
+  const resolveUserLayout = (): { type: "visual"; layout: VisualFloorPlan } | { type: "grid" } => {
+    if (!user) return { type: "grid" }
+
+    // Check user-specific assignment first
+    const userAssignment = userAssignments.assignments[user.id]
+    const layoutRef = userAssignment || userAssignments.default_layout
+
+    if (layoutRef && layoutRef.startsWith("visual:")) {
+      const visualId = layoutRef.replace("visual:", "")
+      const found = visualLayouts.find((l) => l.id === visualId)
+      if (found) return { type: "visual", layout: found }
+    }
+
+    // Fallback to grid
+    return { type: "grid" }
+  }
+
   const renderLayout = () => {
+    // Check if user has a visual layout assigned
+    const resolved = resolveUserLayout()
+    if (resolved.type === "visual") {
+      return renderVisualLayout(resolved.layout)
+    }
+
+    // Grid-based layout fallback
     if (!isFloorPlanLayoutId(activeLayout)) {
       const customLayout = customLayouts.find((layout) => layout.id === activeLayout)
       if (customLayout) return renderCustomLayout(customLayout)

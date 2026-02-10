@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     const { data: tables, error: tablesError } = await supabase
       .from("tables")
       .select("id, table_number, seats, status")
+      .eq("archived", false)
       .eq("status", "available")
       .order("table_number", { ascending: true })
 

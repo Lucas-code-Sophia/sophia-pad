@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const supabase = await createClient()
 
-    const { data: tables, error } = await supabase.from("tables").select("*").order("table_number", { ascending: true })
+    const { data: tables, error } = await supabase.from("tables").select("*").eq("archived", false).order("table_number", { ascending: true })
 
     if (error) {
       console.error("[v0] Error fetching tables:", error)

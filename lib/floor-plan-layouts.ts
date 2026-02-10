@@ -1,4 +1,4 @@
-export type TableLocation = "T" | "I" | "C" | "H"
+export type TableLocation = "T" | "I" | "C" | "H" | "O"
 
 export type FloorPlanZoneLayout = {
   columns?: {
@@ -132,4 +132,32 @@ export const isFloorPlanLayoutId = (value: string): boolean =>
   FLOOR_PLAN_LAYOUTS.some((layout) => layout.id === value)
 
 export const isTableLocation = (value: string): value is TableLocation =>
-  value === "T" || value === "I" || value === "C" || value === "H"
+  value === "T" || value === "I" || value === "C" || value === "H" || value === "O"
+
+// ─── Visual floor plan types (2D canvas editor) ───
+
+export type VisualFloorPlanItem = {
+  id: string
+  type: "table" | "decoration"
+  x: number      // percentage of canvas width (0-100)
+  y: number      // percentage of canvas height (0-100)
+  width: number   // percentage of canvas width
+  height: number  // percentage of canvas height
+  rotation?: number
+  // Table-specific
+  tableId?: string   // UUID of the table in DB
+  // Decoration-specific
+  label?: string
+  color?: string
+}
+
+export type VisualFloorPlan = {
+  id: string
+  label: string
+  items: VisualFloorPlanItem[]
+}
+
+export type UserFloorPlanAssignments = {
+  assignments: Record<string, string> // userId → visual layout id
+  default_layout: string              // fallback layout id (grid-based or visual)
+}
