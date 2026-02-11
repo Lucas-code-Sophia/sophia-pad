@@ -625,7 +625,7 @@ export default function FloorPlanPage() {
     `grid ${GRID_COLS[mobileCols] || "grid-cols-4"} ${GRID_COLS_SM[desktopCols] || "sm:grid-cols-8"} gap-2 sm:gap-3`
 
   const renderMyTablesSection = () => {
-    if (myTables.length === 0) return null
+    if (myTables.length === 0 || user?.role === "manager") return null
     return (
       <div>
         <h2 className="text-lg sm:text-xl font-bold text-[#081E3E] mb-2 sm:mb-3">Mes tables</h2>
