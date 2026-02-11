@@ -51,3 +51,40 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
+
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ tableId: string }> }) {
+  try {
+    const { tableId } = await params
+    const { covers } = await request.json()
+    const supabase = await createClient()
+
+    // Find the open order for this table
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("table_id", tableId)
+      .eq("status", "open")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!order) {
+      return NextResponse.json({ error: "No open order found" }, { status: 404 })
+    }
+
+    const { error } = await supabase
+      .from("orders")
+      .update({ covers })
+      .eq("id", order.id)
+
+    if (error) {
+      console.error("[v0] Error updating order covers:", error)
+      return NextResponse.json({ error: "Failed to update covers" }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("[v0] Error in order PATCH API:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}

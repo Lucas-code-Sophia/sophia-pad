@@ -35,6 +35,7 @@ export interface Table {
   location: "T" | "I" | "C" | "H" | "O" | "B" // T=Terrace, I=Interior, C=Canapé, H=Table d'Hote, O=Olivier, B=Bar
   opened_by?: string // UUID du serveur qui a ouvert la table
   opened_by_name?: string // Nom du serveur qui a ouvert la table
+  current_covers?: number | null // Nombre de couverts de la commande en cours
   archived?: boolean
   created_at: string
 }
@@ -93,6 +94,7 @@ export interface Order {
   table_id: string
   server_id: string
   status: "open" | "closed"
+  covers?: number | null
   created_at: string
   closed_at?: string
 }
@@ -144,6 +146,7 @@ export interface KitchenTicket {
   order_id: string
   table_number: string // Changed from number to string to match table_number format
   server_name?: string
+  covers?: number | null
   type: "kitchen" | "bar"
   items: Array<{
     name: string

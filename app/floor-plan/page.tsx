@@ -591,6 +591,11 @@ export default function FloorPlanPage() {
           {getServerName(table)}
         </div>
       )}
+      {table.status === "occupied" && table.current_covers != null && table.current_covers > 0 && (
+        <div className="absolute bottom-1 right-1 text-[8px] sm:text-[10px] bg-cyan-600/80 px-1 py-0.5 rounded text-white font-medium">
+          👥{table.current_covers}
+        </div>
+      )}
     </button>
   )
 
@@ -877,6 +882,11 @@ export default function FloorPlanPage() {
                 {table.status === "occupied" && getServerName(table) && (
                   <span className="absolute top-0.5 right-0.5 text-[7px] sm:text-[9px] bg-black/50 px-0.5 rounded text-white/90">
                     {getServerName(table)}
+                  </span>
+                )}
+                {table.status === "occupied" && table.current_covers != null && table.current_covers > 0 && (
+                  <span className="absolute bottom-0.5 right-0.5 text-[7px] sm:text-[9px] bg-cyan-600/80 px-0.5 rounded text-white font-medium">
+                    👥{table.current_covers}
                   </span>
                 )}
               </button>

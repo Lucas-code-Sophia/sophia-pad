@@ -247,6 +247,27 @@ export async function GET(request: NextRequest) {
     const totalPeriodDays = Math.max(1, Math.round((periodEndMs - periodStartMs) / (1000 * 60 * 60 * 24)) + 1)
     const dailyAverage = activeDays > 0 ? totalSales / activeDays : 0
 
+    // ── Covers (couverts) stats ──
+    const orderIdsForCovers = (dailySales || []).map((s: any) => s.order_id).filter(Boolean)
+    let totalCovers = 0
+    let ordersWithCovers = 0
+    if (orderIdsForCovers.length > 0) {
+      const { data: ordersData } = await supabase
+        .from("orders")
+        .select("id, covers")
+        .in("id", orderIdsForCovers)
+
+      for (const o of ordersData || []) {
+        if (o.covers != null && o.covers > 0) {
+          totalCovers += o.covers
+          ordersWithCovers++
+        }
+      }
+    }
+    const averageCoversPerOrder = ordersWithCovers > 0 ? totalCovers / ordersWithCovers : 0
+    const revenuePerCover = totalCovers > 0 ? totalSales / totalCovers : 0
+    const dailyAverageCovers = activeDays > 0 ? totalCovers / activeDays : 0
+
     return NextResponse.json({
       salesData,
       hourlySales,
@@ -265,6 +286,10 @@ export async function GET(request: NextRequest) {
         taxRate20Share,
         totalComplimentaryAmount,
         totalComplimentaryCount,
+        totalCovers,
+        averageCoversPerOrder,
+        revenuePerCover,
+        dailyAverageCovers,
         complimentaryPercentage: totalSales > 0 ? (totalComplimentaryAmount / totalSales) * 100 : 0,
         paymentMix: {
           volume: {

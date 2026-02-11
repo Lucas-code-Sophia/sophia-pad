@@ -97,6 +97,11 @@ export default function OrderPage() {
   })
   const [complimentaryReason, setComplimentaryReason] = useState("")
   const [elapsedTime, setElapsedTime] = useState("")
+  const [coversDialogOpen, setCoversDialogOpen] = useState(false)
+  const [coversCount, setCoversCount] = useState<number | null>(null)
+  const [vinBouteilleDialogOpen, setVinBouteilleDialogOpen] = useState(false)
+  const [vinBouteilleItem, setVinBouteilleItem] = useState<MenuItem | null>(null)
+  const [hasOrderedWineBottle, setHasOrderedWineBottle] = useState(false)
 
   // Timer : temps écoulé depuis l'ouverture de la commande
   useEffect(() => {
@@ -130,6 +135,8 @@ export default function OrderPage() {
   const siropOptions = ["Menthe", "Citron", "Pêche", "Grenadine"]
   const cuissonOptions = ["Bleu", "Saignant", "À point", "Bien cuit"]
   const isBurgerItem = (name: string) => normalizeName(name).includes("burger")
+  const isVinBouteilleItem = (item: MenuItem) => item.category === "Vins Bouteille"
+  const verresOptions = [2, 3, 4, 5, 6, 7, 8]
   const getCartItemPrice = (item: CartItem) => item.price ?? item.menuItem?.price ?? 0
 
   useEffect(() => {
@@ -294,14 +301,27 @@ export default function OrderPage() {
           setCart(cartItems)
           setExistingItems(firedItems)
 
+          // Récupérer le nombre de couverts existant
+          if (orderData.order.covers != null) {
+            setCoversCount(orderData.order.covers)
+          }
+
+          // Vérifier si une bouteille de vin a déjà été commandée
+          const allOrderItems = [...cartItems.map(c => c.menuItem), ...firedItems.map((fi: OrderItem) => currentItems.find((m: MenuItem) => m.id === fi.menu_item_id))]
+          const hasWine = allOrderItems.some((mi) => mi && mi.category === "Vins Bouteille")
+          if (hasWine) setHasOrderedWineBottle(true)
+
           console.log("[v0] Order loaded:", {
             pending: pendingItems.length,
             toFollow1: toFollow1Items.length,
             toFollow2: toFollow2Items.length,
             fired: firedItems.length,
-            cartItems: cartItems.length, // Maintenant inclut pending + to_follow
+            cartItems: cartItems.length,
             totalInCart: pendingItems.length + toFollow1Items.length + toFollow2Items.length,
           })
+        } else {
+          // Pas de commande existante → ouvrir le dialog couverts
+          setCoversDialogOpen(true)
         }
       }
     } catch (error) {
@@ -391,7 +411,7 @@ export default function OrderPage() {
         return
       }
 
-      const orderData = {
+      const orderData: any = {
         tableId,
         serverId: user?.id || "",
         items: [
@@ -407,6 +427,10 @@ export default function OrderPage() {
         ],
         supplements: [],
         orderId: currentOrder?.id,
+      }
+      // Envoyer le nombre de couverts à la création de la commande
+      if (!currentOrder?.id && coversCount != null) {
+        orderData.covers = coversCount
       }
 
       const response = await fetch("/api/orders/to-follow", {
@@ -429,7 +453,7 @@ export default function OrderPage() {
     if (items.length === 0) return
 
     try {
-      const orderData = {
+      const orderData: any = {
         tableId,
         serverId: user?.id || "",
         items: items.map((item) => ({
@@ -443,6 +467,10 @@ export default function OrderPage() {
         })),
         supplements: [],
         orderId: currentOrder?.id,
+      }
+      // Envoyer le nombre de couverts à la création de la commande
+      if (!currentOrder?.id && coversCount != null) {
+        orderData.covers = coversCount
       }
 
       const response = await fetch("/api/orders/to-follow", {
@@ -505,6 +533,41 @@ export default function OrderPage() {
     setCuissonItem(null)
   }
 
+  // ── Couverts ──────────────────────────────────────────────────────────
+  const handleCoversConfirm = async (count: number) => {
+    setCoversCount(count)
+    setCoversDialogOpen(false)
+
+    // Si une commande existe déjà, mettre à jour via PATCH
+    if (currentOrder?.id) {
+      try {
+        await fetch(`/api/orders/table/${tableId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ covers: count }),
+        })
+        await fetchOrderData()
+      } catch (error) {
+        console.error("[v0] Error updating covers:", error)
+      }
+    }
+    // Sinon, covers sera envoyé lors de la création de la première commande
+  }
+
+  // ── Vin Bouteille ─────────────────────────────────────────────────────
+  const openVinBouteilleDialog = (item: MenuItem) => {
+    setVinBouteilleItem(item)
+    setVinBouteilleDialogOpen(true)
+  }
+
+  const handleVinBouteilleSelect = async (verres: number) => {
+    if (!vinBouteilleItem) return
+    await addItemsToOrder([{ menuItem: vinBouteilleItem, notes: `${verres} verres à apporter` }])
+    setHasOrderedWineBottle(true)
+    setVinBouteilleDialogOpen(false)
+    setVinBouteilleItem(null)
+  }
+
   const handleMenuItemClick = (item: MenuItem) => {
     if (normalizeName(item.name) === "menu enfant") {
       openMenuEnfantDialog(item)
@@ -512,6 +575,10 @@ export default function OrderPage() {
     }
     if (isBurgerItem(item.name)) {
       openCuissonDialog(item)
+      return
+    }
+    if (isVinBouteilleItem(item) && !hasOrderedWineBottle) {
+      openVinBouteilleDialog(item)
       return
     }
     addToCart(item)
@@ -1045,7 +1112,12 @@ export default function OrderPage() {
         <div className="text-center flex-1">
           <h1 className="text-lg sm:text-2xl font-bold text-white">Table {table?.table_number}</h1>
           <div className="flex items-center justify-center gap-2">
-            <p className="text-xs sm:text-sm text-slate-400">{table?.seats} couverts</p>
+            <button
+              onClick={() => setCoversDialogOpen(true)}
+              className="text-xs sm:text-sm text-slate-400 hover:text-white transition-colors underline-offset-2 hover:underline"
+            >
+              {coversCount != null ? `${coversCount} couverts` : `${table?.seats} places`}
+            </button>
             {elapsedTime && (
               <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-300 border border-blue-500/30">
                 <Clock className="h-3 w-3" />
@@ -1555,6 +1627,82 @@ export default function OrderPage() {
               className="bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600"
             >
               Annuler
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Couverts Dialog */}
+      <Dialog open={coversDialogOpen} onOpenChange={setCoversDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-[95vw] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>👥 Nombre de couverts</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-4 gap-3 py-3">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+              <Button
+                key={n}
+                onClick={() => handleCoversConfirm(n)}
+                className={`h-14 text-lg font-bold transition-colors ${
+                  coversCount === n
+                    ? "bg-blue-600 border-blue-500 hover:bg-blue-700"
+                    : "bg-slate-700 border border-slate-600 hover:bg-blue-600 hover:border-blue-500"
+                }`}
+              >
+                {n}
+              </Button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCoversDialogOpen(false)}
+              className="bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600"
+            >
+              {coversCount != null ? "Fermer" : "Passer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Vin Bouteille Dialog */}
+      <Dialog open={vinBouteilleDialogOpen} onOpenChange={setVinBouteilleDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-[95vw] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>🍷 {vinBouteilleItem?.name}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-400 -mt-2">Combien de verres à apporter ?</p>
+          <div className="grid grid-cols-4 gap-3 py-2">
+            {verresOptions.map((n) => (
+              <Button
+                key={n}
+                onClick={() => handleVinBouteilleSelect(n)}
+                className="h-14 text-lg font-bold bg-slate-700 border border-slate-600 hover:bg-purple-600 hover:border-purple-500 transition-colors"
+              >
+                {n}
+              </Button>
+            ))}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setVinBouteilleDialogOpen(false); setVinBouteilleItem(null) }}
+              className="bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600"
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={() => {
+                if (vinBouteilleItem) {
+                  addItemsToOrder([{ menuItem: vinBouteilleItem }])
+                  setHasOrderedWineBottle(true)
+                }
+                setVinBouteilleDialogOpen(false)
+                setVinBouteilleItem(null)
+              }}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              Sans préciser
             </Button>
           </DialogFooter>
         </DialogContent>

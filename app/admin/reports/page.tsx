@@ -76,6 +76,10 @@ export default function ReportsPage() {
     totalTax: 0,
     taxRate10Share: 0,
     taxRate20Share: 0,
+    totalCovers: 0,
+    averageCoversPerOrder: 0,
+    revenuePerCover: 0,
+    dailyAverageCovers: 0,
     totalComplimentaryAmount: 0,
     totalComplimentaryCount: 0,
     complimentaryPercentage: 0,
@@ -128,6 +132,10 @@ export default function ReportsPage() {
           totalTax: 0, 
           taxRate10Share: 0,
           taxRate20Share: 0,
+          totalCovers: 0,
+          averageCoversPerOrder: 0,
+          revenuePerCover: 0,
+          dailyAverageCovers: 0,
           totalComplimentaryAmount: 0,
           totalComplimentaryCount: 0,
           complimentaryPercentage: 0,
@@ -312,6 +320,28 @@ export default function ReportsPage() {
           <CardContent>
             <div className="text-2xl sm:text-3xl font-bold text-white">{stats.averageTicket.toFixed(2)} €</div>
             <div className="text-xs text-orange-400 mt-1">Par commande</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-cyan-900/20 to-cyan-800/20 border-cyan-700/50 backdrop-blur-sm">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-cyan-400">Couverts</CardTitle>
+            <div className="p-2 bg-cyan-500/20 rounded-lg">
+              <Users className="h-4 w-4 text-cyan-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl sm:text-3xl font-bold text-white">{stats.totalCovers}</div>
+            {stats.totalCovers > 0 && (
+              <>
+                <div className="text-xs text-cyan-300 mt-1">{stats.revenuePerCover.toFixed(2)} € / couvert</div>
+                {period !== "today" && stats.activeDays > 0 && (
+                  <div className="text-xs text-cyan-400 mt-0.5">~{stats.dailyAverageCovers.toFixed(0)} couv./jour</div>
+                )}
+              </>
+            )}
+            {stats.totalCovers === 0 && (
+              <div className="text-xs text-cyan-400/60 mt-1">Pas encore renseigné</div>
+            )}
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-red-900/20 to-red-800/20 border-red-700/50 backdrop-blur-sm">

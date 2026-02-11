@@ -3,20 +3,23 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function POST(request: NextRequest) {
   try {
-    const { tableId, serverId, items, orderId } = await request.json()
+    const { tableId, serverId, items, orderId, covers } = await request.json()
     const supabase = await createClient()
 
     let currentOrderId = orderId
 
     // If no existing order, create one and update table status
     if (!currentOrderId) {
+      const orderInsert: any = {
+        table_id: tableId,
+        server_id: serverId,
+        status: "open",
+      }
+      if (covers != null) orderInsert.covers = covers
+
       const { data: newOrder, error: orderError } = await supabase
         .from("orders")
-        .insert({
-          table_id: tableId,
-          server_id: serverId,
-          status: "open",
-        })
+        .insert(orderInsert)
         .select()
         .single()
 

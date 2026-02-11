@@ -12,7 +12,29 @@ export async function GET() {
       return NextResponse.json({ error: error.message || "Failed to fetch tables" }, { status: 500 })
     }
 
-    return NextResponse.json(tables)
+    // Enrichir les tables occupées avec le nombre de couverts de la commande ouverte
+    const occupiedTableIds = (tables || []).filter((t: any) => t.status === "occupied").map((t: any) => t.id)
+    let coversMap = new Map<string, number>()
+    if (occupiedTableIds.length > 0) {
+      const { data: openOrders } = await supabase
+        .from("orders")
+        .select("table_id, covers")
+        .in("table_id", occupiedTableIds)
+        .eq("status", "open")
+
+      for (const o of openOrders || []) {
+        if (o.covers != null && o.covers > 0) {
+          coversMap.set(o.table_id, o.covers)
+        }
+      }
+    }
+
+    const enrichedTables = (tables || []).map((t: any) => ({
+      ...t,
+      current_covers: coversMap.get(t.id) ?? null,
+    }))
+
+    return NextResponse.json(enrichedTables)
   } catch (error) {
     console.error("[v0] Error in tables API:", error)
     return NextResponse.json(

@@ -28,8 +28,9 @@ export async function GET(request: NextRequest) {
     const orderIds = Array.from(new Set(tickets.map((t: any) => t.order_id).filter(Boolean)))
 
     let orderServerMap = new Map<string, string>()
+    let orderCoversMap = new Map<string, number | null>()
     if (orderIds.length > 0) {
-      const { data: ordersData } = await supabase.from("orders").select("id, server_id").in("id", orderIds)
+      const { data: ordersData } = await supabase.from("orders").select("id, server_id, covers").in("id", orderIds)
       const serverIds = Array.from(new Set((ordersData || []).map((o: any) => o.server_id).filter(Boolean)))
 
       let serverNameMap = new Map<string, string>()
@@ -41,11 +42,15 @@ export async function GET(request: NextRequest) {
       orderServerMap = new Map(
         (ordersData || []).map((o: any) => [o.id, serverNameMap.get(o.server_id) || ""]),
       )
+      orderCoversMap = new Map(
+        (ordersData || []).map((o: any) => [o.id, o.covers]),
+      )
     }
 
     const enriched = tickets.map((t: any) => ({
       ...t,
       server_name: orderServerMap.get(t.order_id) || "",
+      covers: orderCoversMap.get(t.order_id) ?? null,
     }))
 
     return NextResponse.json(enriched)

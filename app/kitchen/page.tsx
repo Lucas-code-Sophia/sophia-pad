@@ -150,9 +150,16 @@ export default function KitchenPage() {
             <div className="flex items-start justify-between mb-3 sm:mb-4">
               <div>
                 <h2 className="text-2xl sm:text-3xl font-bold text-white">Table {ticket.table_number}</h2>
-                <p className="text-xs sm:text-sm text-slate-400">
-                  {new Date(ticket.created_at).toLocaleTimeString("fr-FR")}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs sm:text-sm text-slate-400">
+                    {new Date(ticket.created_at).toLocaleTimeString("fr-FR")}
+                  </p>
+                  {ticket.covers != null && ticket.covers > 0 && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-600/20 text-cyan-300 border border-cyan-500/30">
+                      👥 {ticket.covers}
+                    </span>
+                  )}
+                </div>
               </div>
               <Badge className="bg-red-600 text-white text-xs sm:text-sm">
                 <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
