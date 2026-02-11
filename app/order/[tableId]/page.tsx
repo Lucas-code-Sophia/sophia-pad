@@ -72,6 +72,8 @@ export default function OrderPage() {
   const [menuEnfantItem, setMenuEnfantItem] = useState<MenuItem | null>(null)
   const [menuEnfantChoice, setMenuEnfantChoice] = useState("")
   const [siropChoice, setSiropChoice] = useState("")
+  const [cuissonDialogOpen, setCuissonDialogOpen] = useState(false)
+  const [cuissonItem, setCuissonItem] = useState<MenuItem | null>(null)
   const [supplementDialog, setSupplementDialog] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [transferTables, setTransferTables] = useState<Table[]>([])
@@ -126,6 +128,8 @@ export default function OrderPage() {
   const normalizeName = (name: string) => name.trim().toLowerCase().replace(/'/g, "'")
   const menuEnfantOptions = ["Pâtes poulet", "Frites poulet"]
   const siropOptions = ["Menthe", "Citron", "Pêche", "Grenadine"]
+  const cuissonOptions = ["Bleu", "Saignant", "À point", "Bien cuit"]
+  const isBurgerItem = (name: string) => normalizeName(name).includes("burger")
   const getCartItemPrice = (item: CartItem) => item.price ?? item.menuItem?.price ?? 0
 
   useEffect(() => {
@@ -489,9 +493,25 @@ export default function OrderPage() {
     setMenuEnfantDialogOpen(false)
   }
 
+  const openCuissonDialog = (item: MenuItem) => {
+    setCuissonItem(item)
+    setCuissonDialogOpen(true)
+  }
+
+  const handleCuissonSelect = async (cuisson: string) => {
+    if (!cuissonItem) return
+    await addItemsToOrder([{ menuItem: cuissonItem, notes: `Cuisson: ${cuisson}` }])
+    setCuissonDialogOpen(false)
+    setCuissonItem(null)
+  }
+
   const handleMenuItemClick = (item: MenuItem) => {
     if (normalizeName(item.name) === "menu enfant") {
       openMenuEnfantDialog(item)
+      return
+    }
+    if (isBurgerItem(item.name)) {
+      openCuissonDialog(item)
       return
     }
     addToCart(item)
@@ -1506,6 +1526,35 @@ export default function OrderPage() {
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
             >
               Ajouter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cuisson Dialog */}
+      <Dialog open={cuissonDialogOpen} onOpenChange={setCuissonDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-[95vw] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>🔥 Cuisson — {cuissonItem?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-3">
+            {cuissonOptions.map((cuisson) => (
+              <Button
+                key={cuisson}
+                onClick={() => handleCuissonSelect(cuisson)}
+                className="h-14 text-base font-semibold bg-slate-700 border border-slate-600 hover:bg-orange-600 hover:border-orange-500 transition-colors"
+              >
+                {cuisson}
+              </Button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setCuissonDialogOpen(false); setCuissonItem(null) }}
+              className="bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600"
+            >
+              Annuler
             </Button>
           </DialogFooter>
         </DialogContent>
