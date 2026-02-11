@@ -208,12 +208,18 @@ export async function GET(request: NextRequest) {
       return acc
     }, {})
 
-    const serverStats = Object.values(serverStatsMap).map((server: any) => ({
-      ...server,
-      total_sales_ht: server.total_sales - (taxByServer[server.server_name] || 0),
-      average_ticket: server.order_count > 0 ? server.total_sales / server.order_count : 0,
-      complimentary_percentage: server.total_sales > 0 ? (server.complimentary_amount / server.total_sales) * 100 : 0,
-    }))
+    const serverStats = Object.values(serverStatsMap).map((server: any) => {
+      const durationData = serverDurationMap[server.server_name]
+      return {
+        ...server,
+        total_sales_ht: server.total_sales - (taxByServer[server.server_name] || 0),
+        average_ticket: server.order_count > 0 ? server.total_sales / server.order_count : 0,
+        complimentary_percentage: server.total_sales > 0 ? (server.complimentary_amount / server.total_sales) * 100 : 0,
+        avg_duration: durationData ? Math.round(durationData.totalDuration / durationData.count) : null,
+        total_covers: durationData?.totalCovers || 0,
+        revenue_per_cover: durationData && durationData.totalCovers > 0 ? server.total_sales / durationData.totalCovers : null,
+      }
+    })
 
     // ── Hourly sales breakdown ──
     const hourlyMap: Record<number, { hour: number; total: number; orders: number }> = {}
@@ -247,26 +253,53 @@ export async function GET(request: NextRequest) {
     const totalPeriodDays = Math.max(1, Math.round((periodEndMs - periodStartMs) / (1000 * 60 * 60 * 24)) + 1)
     const dailyAverage = activeDays > 0 ? totalSales / activeDays : 0
 
-    // ── Covers (couverts) stats ──
+    // ── Covers (couverts) & Duration stats ──
     const orderIdsForCovers = (dailySales || []).map((s: any) => s.order_id).filter(Boolean)
     let totalCovers = 0
     let ordersWithCovers = 0
+    const durations: number[] = []
+    const serverDurationMap: Record<string, { totalDuration: number; count: number; totalCovers: number }> = {}
+
     if (orderIdsForCovers.length > 0) {
       const { data: ordersData } = await supabase
         .from("orders")
-        .select("id, covers")
+        .select("id, covers, created_at, closed_at, server_id")
         .in("id", orderIdsForCovers)
+
+      // Map order_id → server_name from dailySales
+      const orderToServer = new Map(
+        (dailySales || []).map((s: any) => [s.order_id, s.server_name || "Inconnu"]),
+      )
 
       for (const o of ordersData || []) {
         if (o.covers != null && o.covers > 0) {
           totalCovers += o.covers
           ordersWithCovers++
         }
+        // Duration calculation (only if closed_at exists and duration is reasonable: < 6h)
+        if (o.created_at && o.closed_at) {
+          const durationMin = (new Date(o.closed_at).getTime() - new Date(o.created_at).getTime()) / 60000
+          if (durationMin > 0 && durationMin < 360) {
+            durations.push(durationMin)
+            const sName = orderToServer.get(o.id) || "Inconnu"
+            if (!serverDurationMap[sName]) {
+              serverDurationMap[sName] = { totalDuration: 0, count: 0, totalCovers: 0 }
+            }
+            serverDurationMap[sName].totalDuration += durationMin
+            serverDurationMap[sName].count += 1
+            if (o.covers != null && o.covers > 0) {
+              serverDurationMap[sName].totalCovers += o.covers
+            }
+          }
+        }
       }
     }
     const averageCoversPerOrder = ordersWithCovers > 0 ? totalCovers / ordersWithCovers : 0
     const revenuePerCover = totalCovers > 0 ? totalSales / totalCovers : 0
     const dailyAverageCovers = activeDays > 0 ? totalCovers / activeDays : 0
+    const avgDurationMin = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0
+    const minDuration = durations.length > 0 ? Math.min(...durations) : 0
+    const maxDuration = durations.length > 0 ? Math.max(...durations) : 0
 
     return NextResponse.json({
       salesData,
@@ -290,6 +323,10 @@ export async function GET(request: NextRequest) {
         averageCoversPerOrder,
         revenuePerCover,
         dailyAverageCovers,
+        avgDurationMin: Math.round(avgDurationMin),
+        minDuration: Math.round(minDuration),
+        maxDuration: Math.round(maxDuration),
+        tablesWithDuration: durations.length,
         complimentaryPercentage: totalSales > 0 ? (totalComplimentaryAmount / totalSales) * 100 : 0,
         paymentMix: {
           volume: {
