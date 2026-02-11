@@ -208,28 +208,32 @@ export async function GET(request: NextRequest) {
       return acc
     }, {})
 
-    const serverStats = Object.values(serverStatsMap).map((server: any) => {
-      const durationData = serverDurationMap[server.server_name]
-      return {
-        ...server,
-        total_sales_ht: server.total_sales - (taxByServer[server.server_name] || 0),
-        average_ticket: server.order_count > 0 ? server.total_sales / server.order_count : 0,
-        complimentary_percentage: server.total_sales > 0 ? (server.complimentary_amount / server.total_sales) * 100 : 0,
-        avg_duration: durationData ? Math.round(durationData.totalDuration / durationData.count) : null,
-        total_covers: durationData?.totalCovers || 0,
-        revenue_per_cover: durationData && durationData.totalCovers > 0 ? server.total_sales / durationData.totalCovers : null,
-      }
-    })
-
-    // ── Hourly sales breakdown ──
+    // ── Hourly sales breakdown (based on table open time, not payment time) ──
     const hourlyMap: Record<number, { hour: number; total: number; orders: number }> = {}
     for (let h = 0; h < 24; h++) {
       hourlyMap[h] = { hour: h, total: 0, orders: 0 }
     }
     const daysInPeriod = new Set<string>()
+
+    // Fetch order open times for all sales
+    const saleOrderIds = (dailySales || []).map((s: any) => s.order_id).filter(Boolean)
+    const orderOpenTimeMap = new Map<string, string>()
+    if (saleOrderIds.length > 0) {
+      const { data: orderTimes } = await supabase
+        .from("orders")
+        .select("id, created_at")
+        .in("id", saleOrderIds)
+      for (const o of orderTimes || []) {
+        if (o.created_at) orderOpenTimeMap.set(o.id, o.created_at)
+      }
+    }
+
     for (const sale of dailySales || []) {
-      if (!sale.created_at) continue
-      const d = new Date(sale.created_at)
+      // Use order open time if available, fallback to sale created_at
+      const openTime = sale.order_id ? orderOpenTimeMap.get(sale.order_id) : null
+      const timestamp = openTime || sale.created_at
+      if (!timestamp) continue
+      const d = new Date(timestamp)
       const hour = d.getHours()
       hourlyMap[hour].total += Number.parseFloat(sale.total_amount)
       hourlyMap[hour].orders += 1
@@ -300,6 +304,20 @@ export async function GET(request: NextRequest) {
     const avgDurationMin = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0
     const minDuration = durations.length > 0 ? Math.min(...durations) : 0
     const maxDuration = durations.length > 0 ? Math.max(...durations) : 0
+
+    // ── Build final server stats (after duration data is available) ──
+    const serverStats = Object.values(serverStatsMap).map((server: any) => {
+      const durationData = serverDurationMap[server.server_name]
+      return {
+        ...server,
+        total_sales_ht: server.total_sales - (taxByServer[server.server_name] || 0),
+        average_ticket: server.order_count > 0 ? server.total_sales / server.order_count : 0,
+        complimentary_percentage: server.total_sales > 0 ? (server.complimentary_amount / server.total_sales) * 100 : 0,
+        avg_duration: durationData ? Math.round(durationData.totalDuration / durationData.count) : null,
+        total_covers: durationData?.totalCovers || 0,
+        revenue_per_cover: durationData && durationData.totalCovers > 0 ? server.total_sales / durationData.totalCovers : null,
+      }
+    })
 
     return NextResponse.json({
       salesData,
