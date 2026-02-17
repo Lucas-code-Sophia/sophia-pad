@@ -53,6 +53,10 @@ export interface Reservation {
   duration_minutes?: number
   created_at: string
   created_by?: string
+  whatsapp_confirmation_requested?: boolean
+  whatsapp_confirmation_sent?: boolean
+  whatsapp_review_requested?: boolean
+  whatsapp_review_sent?: boolean
 }
 
 export interface MenuCategory {

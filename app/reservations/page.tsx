@@ -7,7 +7,7 @@ import type { Reservation, Table } from "@/lib/types"
 import type { VisualFloorPlan } from "@/lib/floor-plan-layouts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Calendar, Plus, Phone, Users, Clock, CheckCircle, XCircle, ChevronLeft, ChevronRight, Sun, Moon, Pencil, Trash2, MapPin, X } from "lucide-react"
+import { ArrowLeft, Calendar, Plus, Phone, Users, Clock, CheckCircle, XCircle, ChevronLeft, ChevronRight, Sun, Moon, Pencil, Trash2, MapPin, X, MessageCircle, Star } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -47,6 +47,11 @@ export default function ReservationsPage() {
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth() + 1) // 1-based
   const [calendarCounts, setCalendarCounts] = useState<CalendarCounts>({})
   const [calendarLoading, setCalendarLoading] = useState(false)
+
+  // WhatsApp global settings (admin/manager only)
+  const [waConfirmEnabled, setWaConfirmEnabled] = useState(false)
+  const [waReviewEnabled, setWaReviewEnabled] = useState(false)
+  const [waSettingsLoading, setWaSettingsLoading] = useState(true)
 
   const [newReservation, setNewReservation] = useState({
     table_id: "",
@@ -94,6 +99,7 @@ export default function ReservationsPage() {
     if (user) {
       fetchReservations()
       fetchTables()
+      fetchWhatsAppSettings()
       setNewReservation((prev) => ({ ...prev, created_by: user.id }))
     }
   }, [user, selectedDate])
@@ -143,6 +149,56 @@ export default function ReservationsPage() {
       console.error("[v0] Error fetching calendar:", error)
     } finally {
       setCalendarLoading(false)
+    }
+  }
+
+  const fetchWhatsAppSettings = async () => {
+    try {
+      setWaSettingsLoading(true)
+      const response = await fetch("/api/settings/whatsapp")
+      if (response.ok) {
+        const data = await response.json()
+        setWaConfirmEnabled(data.confirmation_enabled ?? false)
+        setWaReviewEnabled(data.review_enabled ?? false)
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching WhatsApp settings:", error)
+    } finally {
+      setWaSettingsLoading(false)
+    }
+  }
+
+  const toggleWhatsAppSetting = async (key: "confirmation_enabled" | "review_enabled", value: boolean) => {
+    try {
+      // Optimistic update
+      if (key === "confirmation_enabled") setWaConfirmEnabled(value)
+      else setWaReviewEnabled(value)
+
+      const response = await fetch("/api/settings/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      })
+
+      if (!response.ok) {
+        // Rollback on error
+        if (key === "confirmation_enabled") setWaConfirmEnabled(!value)
+        else setWaReviewEnabled(!value)
+        return
+      }
+
+      // Notify n8n webhook to enable/disable the workflow
+      const webhookName = key === "confirmation_enabled" ? "whatsapp" : "review"
+      fetch("https://n8n.srv1367878.hstgr.cloud/webhook/whatsapp-review-webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: webhookName, status: value }),
+      }).catch((err) => console.warn("[v0] n8n webhook notification failed:", err))
+
+    } catch (error) {
+      console.error("[v0] Error toggling WhatsApp setting:", error)
+      if (key === "confirmation_enabled") setWaConfirmEnabled(!value)
+      else setWaReviewEnabled(!value)
     }
   }
 
@@ -244,6 +300,8 @@ export default function ReservationsPage() {
       const payload = {
         ...newReservation,
         created_by: user?.id || null,
+        whatsapp_confirmation_requested: waConfirmEnabled,
+        whatsapp_review_requested: waReviewEnabled,
       }
       const response = await fetch("/api/reservations", {
         method: "POST",
@@ -446,6 +504,44 @@ export default function ReservationsPage() {
     return true
   })
 
+  // WhatsApp link generator
+  const generateWhatsAppLink = (reservation: Reservation) => {
+    const phone = (reservation.customer_phone || "").replace(/[\s\-.()]/g, "")
+    // Format: +33... or 06... → convert 06 to +336
+    let formattedPhone = phone
+    if (phone.startsWith("0")) {
+      formattedPhone = "+33" + phone.slice(1)
+    } else if (!phone.startsWith("+")) {
+      formattedPhone = "+" + phone
+    }
+
+    const dateObj = new Date(reservation.reservation_date + "T00:00:00")
+    const dateStr = dateObj.toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    })
+    const timeStr = (reservation.reservation_time || "").slice(0, 5).replace(":", "h")
+
+    const message = `Bonjour ${reservation.customer_name} 👋\n\n📅 Rappel de votre réservation :\n🕐 ${dateStr} à ${timeStr}\n👥 ${reservation.party_size} personne${reservation.party_size > 1 ? "s" : ""}\n\nPouvez-vous confirmer votre venue ?\n✅ Oui, je confirme\n❌ Non, j'annule`
+
+    return `https://wa.me/${formattedPhone.replace("+", "")}?text=${encodeURIComponent(message)}`
+  }
+
+  const generateReviewWhatsAppLink = (reservation: Reservation) => {
+    const phone = (reservation.customer_phone || "").replace(/[\s\-.()]/g, "")
+    let formattedPhone = phone
+    if (phone.startsWith("0")) {
+      formattedPhone = "+33" + phone.slice(1)
+    } else if (!phone.startsWith("+")) {
+      formattedPhone = "+" + phone
+    }
+
+    const message = `Bonjour ${reservation.customer_name} 😊\n\nMerci pour votre visite ! Nous espérons que vous avez passé un agréable moment.\n\n⭐ Si vous avez apprécié, un petit avis nous ferait très plaisir !\n\nMerci et à bientôt ! 🙏`
+
+    return `https://wa.me/${formattedPhone.replace("+", "")}?text=${encodeURIComponent(message)}`
+  }
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "confirmed": return "bg-blue-600"
@@ -629,6 +725,18 @@ export default function ReservationsPage() {
                     rows={3}
                   />
                 </div>
+                {/* WhatsApp info */}
+                {(waConfirmEnabled || waReviewEnabled) && (
+                  <div className="border border-green-700/40 rounded-lg p-2.5 bg-green-900/10">
+                    <div className="flex items-center gap-2 text-green-400 text-xs">
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      <span className="font-medium">WhatsApp actif :</span>
+                      {waConfirmEnabled && <span className="bg-green-900/40 px-1.5 py-0.5 rounded text-[10px]">Confirmation J-1</span>}
+                      {waReviewEnabled && <span className="bg-purple-900/40 text-purple-400 px-1.5 py-0.5 rounded text-[10px]">Avis J+1</span>}
+                    </div>
+                  </div>
+                )}
+
                 <p className="text-xs text-slate-500"><span className="text-red-400">*</span> Champs obligatoires</p>
                 <Button onClick={handleAddReservation} className="w-full bg-green-600 hover:bg-green-700 text-sm">
                   Créer la réservation
@@ -638,6 +746,42 @@ export default function ReservationsPage() {
           </Dialog>
         </div>
       </div>
+
+      {/* WhatsApp global settings — manager only */}
+      {user?.role === "manager" && (
+        <div className="mb-4 sm:mb-6 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <div className="flex items-center gap-2 text-green-400 text-sm font-medium">
+            <MessageCircle className="h-4 w-4" />
+            WhatsApp
+          </div>
+          {waSettingsLoading ? (
+            <span className="text-slate-500 text-xs">Chargement...</span>
+          ) : (
+            <>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => toggleWhatsAppSetting("confirmation_enabled", !waConfirmEnabled)}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${waConfirmEnabled ? "bg-green-600" : "bg-slate-600"}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${waConfirmEnabled ? "translate-x-4" : ""}`} />
+                </button>
+                <span className="text-xs text-slate-300">Confirmation J-1</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => toggleWhatsAppSetting("review_enabled", !waReviewEnabled)}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${waReviewEnabled ? "bg-purple-600" : "bg-slate-600"}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${waReviewEnabled ? "translate-x-4" : ""}`} />
+                </button>
+                <span className="text-xs text-slate-300">Avis J+1</span>
+              </label>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Calendar */}
       <Card className="bg-slate-800 border-slate-700 mb-4 sm:mb-6">
@@ -855,6 +999,56 @@ export default function ReservationsPage() {
                 {reservation.notes && (
                   <div className="text-xs sm:text-sm text-slate-400 bg-slate-700 p-2 rounded break-words">
                     {reservation.notes}
+                  </div>
+                )}
+                {/* WhatsApp status */}
+                {(reservation.whatsapp_confirmation_requested || reservation.whatsapp_review_requested) && (
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {reservation.whatsapp_confirmation_requested && (
+                      <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${
+                        reservation.whatsapp_confirmation_sent
+                          ? "bg-green-900/40 text-green-400 border border-green-700/50"
+                          : "bg-yellow-900/30 text-yellow-400 border border-yellow-700/50"
+                      }`}>
+                        <MessageCircle className="h-2.5 w-2.5" />
+                        Confirmation {reservation.whatsapp_confirmation_sent ? "✓ envoyé" : "⏳ en attente"}
+                      </span>
+                    )}
+                    {reservation.whatsapp_review_requested && (
+                      <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${
+                        reservation.whatsapp_review_sent
+                          ? "bg-green-900/40 text-green-400 border border-green-700/50"
+                          : "bg-purple-900/30 text-purple-400 border border-purple-700/50"
+                      }`}>
+                        <Star className="h-2.5 w-2.5" />
+                        Avis {reservation.whatsapp_review_sent ? "✓ envoyé" : "⏳ en attente"}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {/* WhatsApp action buttons */}
+                {reservation.customer_phone && reservation.status !== "cancelled" && (
+                  <div className="flex gap-1.5 flex-wrap">
+                    <a
+                      href={generateWhatsAppLink(reservation)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-green-600/20 hover:bg-green-600/40 text-green-400 border border-green-700/50 transition-colors"
+                    >
+                      <MessageCircle className="h-3 w-3" />
+                      Confirmer via WhatsApp
+                    </a>
+                    {(reservation.status === "completed") && (
+                      <a
+                        href={generateReviewWhatsAppLink(reservation)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-700/50 transition-colors"
+                      >
+                        <Star className="h-3 w-3" />
+                        Demander un avis
+                      </a>
+                    )}
                   </div>
                 )}
                 {/* Action buttons */}

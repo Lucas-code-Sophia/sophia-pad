@@ -1,0 +1,665 @@
+{
+  "name": "Sophia-Pad – WhatsApp Réservations",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 10,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "c1000001-0001-0001-0001-000000000001",
+      "name": "⏰ Confirmation J-1 (10h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calcule la date de demain au format YYYY-MM-DD\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst dateStr = tomorrow.toISOString().split('T')[0];\nreturn [{ json: { target_date: dateStr, flow: 'confirmation' } }];"
+      },
+      "id": "c1000001-0001-0001-0001-000000000002",
+      "name": "📅 Calcul date demain",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?whatsapp_confirmation_requested=eq.true&whatsapp_confirmation_sent=eq.false&reservation_date=eq.{{ $json.target_date }}&status=eq.confirmed&select=id,customer_name,customer_phone,reservation_date,reservation_time,party_size,tables(table_number)",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "VOTRE_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer VOTRE_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1000001-0001-0001-0001-000000000003",
+      "name": "🔍 Résas demain à confirmer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-confirm-has-data",
+              "leftValue": "={{ $json.customer_phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c1000001-0001-0001-0001-000000000004",
+      "name": "✅ A un téléphone ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Formater le numéro de téléphone pour WhatsApp\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  let phone = (data.customer_phone || '').replace(/[\\s\\-\\.\\(\\)]/g, '');\n  \n  // Convertir format français 06... en +336...\n  if (phone.startsWith('0')) {\n    phone = '33' + phone.slice(1);\n  } else if (phone.startsWith('+')) {\n    phone = phone.slice(1);\n  }\n  \n  // Formater la date en français\n  const dateObj = new Date(data.reservation_date + 'T00:00:00');\n  const jours = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];\n  const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];\n  const dateStr = `${jours[dateObj.getDay()]} ${dateObj.getDate()} ${mois[dateObj.getMonth()]}`;\n  \n  // Formater l'heure\n  const timeStr = (data.reservation_time || '').slice(0, 5).replace(':', 'h');\n  \n  // Nom de la table\n  const tableName = data.tables?.table_number || 'N/A';\n  \n  results.push({\n    json: {\n      ...data,\n      whatsapp_phone: phone,\n      formatted_date: dateStr,\n      formatted_time: timeStr,\n      table_name: tableName\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "c1000001-0001-0001-0001-000000000005",
+      "name": "📱 Formater téléphone (Confirm)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, -60]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/VOTRE_PHONE_NUMBER_ID/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer VOTRE_WHATSAPP_ACCESS_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.whatsapp_phone }}\",\n  \"type\": \"template\",\n  \"template\": {\n    \"name\": \"reservation_confirmation\",\n    \"language\": { \"code\": \"fr\" },\n    \"components\": [\n      {\n        \"type\": \"body\",\n        \"parameters\": [\n          { \"type\": \"text\", \"text\": \"{{ $json.customer_name }}\" },\n          { \"type\": \"text\", \"text\": \"{{ $json.formatted_date }}\" },\n          { \"type\": \"text\", \"text\": \"{{ $json.formatted_time }}\" },\n          { \"type\": \"text\", \"text\": \"{{ $json.party_size }}\" }\n        ]\n      }\n    ]\n  }\n}",
+        "options": {}
+      },
+      "id": "c1000001-0001-0001-0001-000000000006",
+      "name": "💬 Envoyer WhatsApp Confirmation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, -60]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?id=eq.{{ $json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "VOTRE_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer VOTRE_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"whatsapp_confirmation_sent\": true }",
+        "options": {}
+      },
+      "id": "c1000001-0001-0001-0001-000000000007",
+      "name": "✅ Marquer confirmation envoyée",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, -60]
+    },
+
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 14,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "c1000001-0002-0001-0001-000000000001",
+      "name": "⏰ Avis J+1 (14h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calcule la date d'hier au format YYYY-MM-DD\nconst yesterday = new Date();\nyesterday.setDate(yesterday.getDate() - 1);\nconst dateStr = yesterday.toISOString().split('T')[0];\nreturn [{ json: { target_date: dateStr, flow: 'review' } }];"
+      },
+      "id": "c1000001-0002-0001-0001-000000000002",
+      "name": "📅 Calcul date hier",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 340]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?whatsapp_review_requested=eq.true&whatsapp_review_sent=eq.false&reservation_date=eq.{{ $json.target_date }}&status=eq.completed&select=id,customer_name,customer_phone,reservation_date",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "VOTRE_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer VOTRE_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1000001-0002-0001-0001-000000000003",
+      "name": "🔍 Résas terminées hier (avis)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-review-has-data",
+              "leftValue": "={{ $json.customer_phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c1000001-0002-0001-0001-000000000004",
+      "name": "✅ A un téléphone ? (Avis)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Formater le numéro de téléphone pour WhatsApp\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  let phone = (data.customer_phone || '').replace(/[\\s\\-\\.\\(\\)]/g, '');\n  \n  if (phone.startsWith('0')) {\n    phone = '33' + phone.slice(1);\n  } else if (phone.startsWith('+')) {\n    phone = phone.slice(1);\n  }\n  \n  results.push({\n    json: {\n      ...data,\n      whatsapp_phone: phone\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "c1000001-0002-0001-0001-000000000005",
+      "name": "📱 Formater téléphone (Avis)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/VOTRE_PHONE_NUMBER_ID/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer VOTRE_WHATSAPP_ACCESS_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.whatsapp_phone }}\",\n  \"type\": \"template\",\n  \"template\": {\n    \"name\": \"review_request\",\n    \"language\": { \"code\": \"fr\" },\n    \"components\": [\n      {\n        \"type\": \"body\",\n        \"parameters\": [\n          { \"type\": \"text\", \"text\": \"{{ $json.customer_name }}\" }\n        ]\n      }\n    ]\n  }\n}",
+        "options": {}
+      },
+      "id": "c1000001-0002-0001-0001-000000000006",
+      "name": "💬 Envoyer WhatsApp Avis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 280]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?id=eq.{{ $json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "VOTRE_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer VOTRE_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"whatsapp_review_sent\": true }",
+        "options": {}
+      },
+      "id": "c1000001-0002-0001-0001-000000000007",
+      "name": "✅ Marquer avis envoyé",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 280]
+    },
+
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "options": {}
+      },
+      "id": "c1000001-0003-0001-0001-000000000001",
+      "name": "🔔 Webhook WhatsApp (réponses)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 680],
+      "webhookId": "whatsapp-webhook-sophia"
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "whatsapp-webhook",
+        "options": {
+          "responseData": "={{ $json.hub?.challenge || 'ok' }}"
+        }
+      },
+      "id": "c1000001-0003-0001-0001-000000000010",
+      "name": "🔔 Webhook Verify (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 900],
+      "webhookId": "whatsapp-webhook-verify"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parser la réponse WhatsApp entrante\nconst body = $input.first().json.body || $input.first().json;\n\n// WhatsApp Cloud API webhook structure\nconst entry = body.entry?.[0];\nconst changes = entry?.changes?.[0];\nconst value = changes?.value;\n\n// Vérifier si c'est un message entrant (pas un status update)\nif (!value?.messages || value.messages.length === 0) {\n  return [{ json: { skip: true, reason: 'Pas un message entrant (status update)' } }];\n}\n\nconst message = value.messages[0];\nconst from = message.from; // numéro du client (ex: 33612345678)\nconst text = (message.text?.body || '').toLowerCase().trim();\nconst timestamp = message.timestamp;\n\n// Déterminer l'intention du client\nlet intent = 'unknown';\nconst confirmWords = ['oui', 'yes', 'ok', 'confirme', 'confirmé', 'je confirme', 'c\\'est bon', 'parfait', 'super', '👍', '✅'];\nconst cancelWords = ['non', 'no', 'annule', 'annuler', 'annulé', 'je ne peux pas', 'impossible', 'cancel', '❌'];\n\nfor (const w of confirmWords) {\n  if (text.includes(w)) { intent = 'confirmed'; break; }\n}\nif (intent === 'unknown') {\n  for (const w of cancelWords) {\n    if (text.includes(w)) { intent = 'cancelled'; break; }\n  }\n}\n\nreturn [{\n  json: {\n    skip: false,\n    from_phone: from,\n    message_text: text,\n    intent: intent,\n    timestamp: timestamp,\n    raw: body\n  }\n}];"
+      },
+      "id": "c1000001-0003-0001-0001-000000000002",
+      "name": "🧠 Parser la réponse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 680]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-not-skip",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond-has-intent",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "unknown",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c1000001-0003-0001-0001-000000000003",
+      "name": "🎯 Intention reconnue ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 680]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Chercher la réservation correspondant au numéro de téléphone\n// Le numéro WhatsApp est au format 33XXXXXXXXX\n// On doit retrouver la résa la plus proche dans le futur\nconst data = $input.first().json;\nconst phone = data.from_phone;\n\n// Formater le numéro pour chercher dans la BDD\n// Le téléphone peut être stocké comme 06..., +33..., ou 33...\nlet searchPhones = [];\nif (phone.startsWith('33')) {\n  searchPhones.push('0' + phone.slice(2));      // 0612345678\n  searchPhones.push('+33' + phone.slice(2));     // +33612345678\n  searchPhones.push('33' + phone.slice(2));      // 33612345678\n  searchPhones.push('+' + phone);                // +33612345678\n}\nsearchPhones.push(phone);\n\nreturn [{\n  json: {\n    ...data,\n    search_phones: searchPhones,\n    // On va chercher avec le format le plus courant en France (06...)\n    search_phone_main: phone.startsWith('33') ? '0' + phone.slice(2) : phone\n  }\n}];"
+      },
+      "id": "c1000001-0003-0001-0001-000000000004",
+      "name": "📱 Formater numéro recherche",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 620]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?customer_phone=ilike.*{{ $json.search_phone_main.slice(-9) }}&status=eq.confirmed&reservation_date=gte.{{ new Date().toISOString().split('T')[0] }}&order=reservation_date.asc&limit=1&select=id,customer_name,customer_phone,reservation_date,reservation_time,party_size,status",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "VOTRE_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer VOTRE_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1000001-0003-0001-0001-000000000005",
+      "name": "🔍 Trouver la réservation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 620]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-found-resa",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c1000001-0003-0001-0001-000000000006",
+      "name": "📋 Résa trouvée ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1320, 620]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Préparer la mise à jour selon l'intention\nconst resa = $('🔍 Trouver la réservation').first().json;\nconst intent = $('🧠 Parser la réponse').first().json.intent;\nconst messageText = $('🧠 Parser la réponse').first().json.message_text;\n\nlet newStatus = resa.status;\nlet replyMessage = '';\n\nif (intent === 'confirmed') {\n  // La résa reste confirmée, on note que le client a confirmé\n  replyMessage = `Merci ${resa.customer_name} ! ✅\\n\\nVotre réservation est bien confirmée :\\n📅 ${resa.reservation_date}\\n🕐 ${(resa.reservation_time || '').slice(0, 5)}\\n👥 ${resa.party_size} personne(s)\\n\\nÀ bientôt ! 😊`;\n} else if (intent === 'cancelled') {\n  newStatus = 'cancelled';\n  replyMessage = `Merci ${resa.customer_name} pour votre retour.\\n\\n❌ Votre réservation du ${resa.reservation_date} à ${(resa.reservation_time || '').slice(0, 5)} a bien été annulée.\\n\\nN'hésitez pas à nous recontacter pour une prochaine réservation ! 😊`;\n}\n\n// Formater le numéro pour l'envoi\nlet phone = (resa.customer_phone || '').replace(/[\\s\\-\\.\\(\\)]/g, '');\nif (phone.startsWith('0')) {\n  phone = '33' + phone.slice(1);\n} else if (phone.startsWith('+')) {\n  phone = phone.slice(1);\n}\n\nreturn [{\n  json: {\n    reservation_id: resa.id,\n    new_status: newStatus,\n    intent: intent,\n    reply_message: replyMessage,\n    whatsapp_phone: phone,\n    customer_name: resa.customer_name\n  }\n}];"
+      },
+      "id": "c1000001-0003-0001-0001-000000000007",
+      "name": "🧮 Préparer mise à jour",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 560]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?id=eq.{{ $json.reservation_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "VOTRE_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer VOTRE_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"status\": \"{{ $json.new_status }}\", \"confirmed\": {{ $json.intent === 'confirmed' ? 'true' : 'false' }} }",
+        "options": {}
+      },
+      "id": "c1000001-0003-0001-0001-000000000008",
+      "name": "💾 Mettre à jour résa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 560]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/VOTRE_PHONE_NUMBER_ID/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer VOTRE_WHATSAPP_ACCESS_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.whatsapp_phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"{{ $json.reply_message }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "c1000001-0003-0001-0001-000000000009",
+      "name": "💬 Répondre au client",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 560]
+    }
+  ],
+
+  "connections": {
+    "⏰ Confirmation J-1 (10h)": {
+      "main": [
+        [{ "node": "📅 Calcul date demain", "type": "main", "index": 0 }]
+      ]
+    },
+    "📅 Calcul date demain": {
+      "main": [
+        [{ "node": "🔍 Résas demain à confirmer", "type": "main", "index": 0 }]
+      ]
+    },
+    "🔍 Résas demain à confirmer": {
+      "main": [
+        [{ "node": "✅ A un téléphone ?", "type": "main", "index": 0 }]
+      ]
+    },
+    "✅ A un téléphone ?": {
+      "main": [
+        [{ "node": "📱 Formater téléphone (Confirm)", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "📱 Formater téléphone (Confirm)": {
+      "main": [
+        [{ "node": "💬 Envoyer WhatsApp Confirmation", "type": "main", "index": 0 }]
+      ]
+    },
+    "💬 Envoyer WhatsApp Confirmation": {
+      "main": [
+        [{ "node": "✅ Marquer confirmation envoyée", "type": "main", "index": 0 }]
+      ]
+    },
+
+    "⏰ Avis J+1 (14h)": {
+      "main": [
+        [{ "node": "📅 Calcul date hier", "type": "main", "index": 0 }]
+      ]
+    },
+    "📅 Calcul date hier": {
+      "main": [
+        [{ "node": "🔍 Résas terminées hier (avis)", "type": "main", "index": 0 }]
+      ]
+    },
+    "🔍 Résas terminées hier (avis)": {
+      "main": [
+        [{ "node": "✅ A un téléphone ? (Avis)", "type": "main", "index": 0 }]
+      ]
+    },
+    "✅ A un téléphone ? (Avis)": {
+      "main": [
+        [{ "node": "📱 Formater téléphone (Avis)", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "📱 Formater téléphone (Avis)": {
+      "main": [
+        [{ "node": "💬 Envoyer WhatsApp Avis", "type": "main", "index": 0 }]
+      ]
+    },
+    "💬 Envoyer WhatsApp Avis": {
+      "main": [
+        [{ "node": "✅ Marquer avis envoyé", "type": "main", "index": 0 }]
+      ]
+    },
+
+    "🔔 Webhook WhatsApp (réponses)": {
+      "main": [
+        [{ "node": "🧠 Parser la réponse", "type": "main", "index": 0 }]
+      ]
+    },
+    "🧠 Parser la réponse": {
+      "main": [
+        [{ "node": "🎯 Intention reconnue ?", "type": "main", "index": 0 }]
+      ]
+    },
+    "🎯 Intention reconnue ?": {
+      "main": [
+        [{ "node": "📱 Formater numéro recherche", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "📱 Formater numéro recherche": {
+      "main": [
+        [{ "node": "🔍 Trouver la réservation", "type": "main", "index": 0 }]
+      ]
+    },
+    "🔍 Trouver la réservation": {
+      "main": [
+        [{ "node": "📋 Résa trouvée ?", "type": "main", "index": 0 }]
+      ]
+    },
+    "📋 Résa trouvée ?": {
+      "main": [
+        [{ "node": "🧮 Préparer mise à jour", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "🧮 Préparer mise à jour": {
+      "main": [
+        [
+          { "node": "💾 Mettre à jour résa", "type": "main", "index": 0 },
+          { "node": "💬 Répondre au client", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 3,
+  "pinData": {}
+}
+
