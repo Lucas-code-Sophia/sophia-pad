@@ -1296,7 +1296,7 @@ export default function OrderPage() {
             )}
 
             {/* Cart Items */}
-            <div className="space-y-2 sm:space-y-3 mb-3 sm:mb-4 max-h-48 sm:max-h-60 overflow-y-auto">
+            <div className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-4 max-h-[55vh] sm:max-h-[60vh] overflow-y-auto">
               {cart.length === 0 && supplements.length === 0 ? (
                 <p className="text-center text-slate-500 py-6 sm:py-8 text-sm">Panier vide</p>
               ) : (
@@ -1304,71 +1304,71 @@ export default function OrderPage() {
                   {cart.map((item, index) => (
                     <div
                       key={`${item.id}-${index}`}
-                      className={`p-2 sm:p-3 rounded-lg ${item.isComplimentary ? "bg-green-900/20 border-2 border-green-700" : "bg-slate-900"}`}
+                      className={`px-2 py-1.5 sm:p-2.5 rounded-lg ${item.isComplimentary ? "bg-green-900/20 border-2 border-green-700" : "bg-slate-900"}`}
                     >
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium text-white text-sm sm:text-base truncate">
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="font-medium text-white text-xs sm:text-sm truncate">
                               {item.menuItem?.name || "Article inconnu"}
                             </h4>
                             {item.isComplimentary && (
-                              <Badge className="bg-green-600 text-xs flex items-center gap-1">
-                                <Gift className="h-3 w-3" />
+                              <Badge className="bg-green-600 text-[10px] px-1 py-0 leading-tight flex items-center gap-0.5">
+                                <Gift className="h-2.5 w-2.5" />
                                 Offert
                               </Badge>
                             )}
+                            <span
+                              className={`text-xs ${item.isComplimentary ? "line-through text-slate-500" : "text-slate-400"}`}
+                            >
+                              {getCartItemPrice(item).toFixed(2)} €
+                            </span>
                           </div>
-                          <p
-                            className={`text-xs sm:text-sm ${item.isComplimentary ? "line-through text-slate-500" : "text-slate-400"}`}
-                          >
-                            {getCartItemPrice(item).toFixed(2)} €
-                          </p>
                           {item.isComplimentary && item.complimentaryReason && (
-                            <p className="text-xs text-green-400 italic mt-1">{item.complimentaryReason}</p>
+                            <p className="text-[10px] text-green-400 italic">{item.complimentaryReason}</p>
                           )}
                         </div>
-                        <div className="flex items-center gap-1 sm:gap-2 ml-2">
+                        <div className="flex items-center gap-1 ml-2">
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => removeFromCart(item.cartItemId)}
-                            className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700 text-white"
+                            className="h-6 w-6 sm:h-7 sm:w-7 p-0 bg-slate-800 border-slate-700 text-white"
                           >
-                            <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
+                            <Minus className="h-3 w-3" />
                           </Button>
-                          <span className="text-white font-semibold w-5 sm:w-6 text-center text-sm">
+                          <span className="text-white font-semibold w-5 text-center text-xs sm:text-sm">
                             {item.quantity}
                           </span>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => item.menuItem && addToCart(item.menuItem)}
-                            className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700 text-white"
+                            className="h-6 w-6 sm:h-7 sm:w-7 p-0 bg-slate-800 border-slate-700 text-white"
                           >
-                            <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
+                            <Plus className="h-3 w-3" />
                           </Button>
                         </div>
                       </div>
-                      <div className="flex gap-1.5 sm:gap-2 flex-wrap">
+                      <div className="flex gap-1 mt-1 flex-wrap">
                         <Button
                           size="sm"
                           variant={item.status === "to_follow_1" || item.status === "to_follow_2" ? "default" : "outline"}
                           onClick={() => toggleToFollow(item.cartItemId)}
-                          className={
+                          className={`h-5 sm:h-6 px-1.5 sm:px-2 text-[10px] sm:text-xs ${
                             item.status === "to_follow_1" || item.status === "to_follow_2"
-                              ? "bg-yellow-600 hover:bg-yellow-700 text-white text-xs"
-                              : "bg-slate-800 border-slate-700 text-white text-xs"
-                          }
+                              ? "bg-yellow-600 hover:bg-yellow-700 text-white"
+                              : "bg-slate-800 border-slate-700 text-white"
+                          }`}
                         >
-                          <Clock className="h-3 w-3 mr-1" />
-                          {item.status === "to_follow_1" ? "À suivre 1" : item.status === "to_follow_2" ? "À suivre 2" : "À suivre"}
+                          <Clock className="h-2.5 w-2.5 mr-0.5" />
+                          {item.status === "to_follow_1" ? "Suivre 1" : item.status === "to_follow_2" ? "Suivre 2" : "À suivre"}
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => openNotesDialog(item.cartItemId)}
-                          className="bg-slate-800 border-slate-700 text-white text-xs"
+                          className="h-5 sm:h-6 px-1.5 sm:px-2 bg-slate-800 border-slate-700 text-white text-[10px] sm:text-xs"
                         >
                           Notes
                         </Button>
@@ -1376,17 +1376,17 @@ export default function OrderPage() {
                           size="sm"
                           variant={item.isComplimentary ? "default" : "outline"}
                           onClick={() => toggleComplimentary(item.cartItemId, "cart")}
-                          className={
+                          className={`h-5 sm:h-6 px-1.5 sm:px-2 text-[10px] sm:text-xs ${
                             item.isComplimentary
-                              ? "bg-green-600 hover:bg-green-700 text-white text-xs"
-                              : "bg-slate-800 border-slate-700 text-white text-xs"
-                          }
+                              ? "bg-green-600 hover:bg-green-700 text-white"
+                              : "bg-slate-800 border-slate-700 text-white"
+                          }`}
                         >
-                          <Gift className="h-3 w-3 mr-1" />
+                          <Gift className="h-2.5 w-2.5 mr-0.5" />
                           Offert
                         </Button>
                       </div>
-                      {item.notes && <p className="text-xs text-slate-400 mt-2 italic">{item.notes}</p>}
+                      {item.notes && <p className="text-[10px] text-slate-400 mt-0.5 italic">{item.notes}</p>}
                     </div>
                   ))}
 
@@ -1394,54 +1394,54 @@ export default function OrderPage() {
                   {supplements.map((supplement) => (
                     <div
                       key={supplement.id}
-                      className={`p-2 sm:p-3 rounded-lg ${supplement.isComplimentary ? "bg-green-900/20 border-2 border-green-700" : "bg-purple-900/20 border border-purple-700"}`}
+                      className={`px-2 py-1.5 sm:p-2.5 rounded-lg ${supplement.isComplimentary ? "bg-green-900/20 border-2 border-green-700" : "bg-purple-900/20 border border-purple-700"}`}
                     >
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 sm:gap-2">
-                            <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-purple-400 flex-shrink-0" />
-                            <h4 className="font-medium text-white text-sm sm:text-base truncate">{supplement.name}</h4>
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="h-3 w-3 text-purple-400 flex-shrink-0" />
+                            <h4 className="font-medium text-white text-xs sm:text-sm truncate">{supplement.name}</h4>
                             {supplement.isComplimentary && (
-                              <Badge className="bg-green-600 text-xs flex items-center gap-1">
-                                <Gift className="h-3 w-3" />
+                              <Badge className="bg-green-600 text-[10px] px-1 py-0 leading-tight flex items-center gap-0.5">
+                                <Gift className="h-2.5 w-2.5" />
                                 Offert
                               </Badge>
                             )}
+                            <span
+                              className={`text-xs ${supplement.isComplimentary ? "line-through text-slate-500" : "text-purple-400"}`}
+                            >
+                              {supplement.amount.toFixed(2)} €
+                            </span>
                           </div>
-                          <p
-                            className={`text-xs sm:text-sm ${supplement.isComplimentary ? "line-through text-slate-500" : "text-purple-400"}`}
-                          >
-                            {supplement.amount.toFixed(2)} € (supplément)
-                          </p>
-                          {supplement.notes && <p className="text-xs text-slate-400 mt-1 italic">{supplement.notes}</p>}
+                          {supplement.notes && <p className="text-[10px] text-slate-400 italic">{supplement.notes}</p>}
                           {supplement.isComplimentary && supplement.complimentaryReason && (
-                            <p className="text-xs text-green-400 italic mt-1">{supplement.complimentaryReason}</p>
+                            <p className="text-[10px] text-green-400 italic">{supplement.complimentaryReason}</p>
                           )}
                         </div>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => removeSupplement(supplement.id)}
-                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 bg-slate-800 border-slate-700 text-white ml-2 flex-shrink-0"
+                          className="h-6 w-6 sm:h-7 sm:w-7 p-0 bg-slate-800 border-slate-700 text-white ml-2 flex-shrink-0"
                         >
-                          <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
+                          <Minus className="h-3 w-3" />
                         </Button>
                       </div>
-                      <div className="flex gap-1.5 sm:gap-2">
+                      <div className="flex gap-1 mt-1">
                         <Button
                           size="sm"
                           variant={supplement.isComplimentary ? "default" : "outline"}
                           onClick={() => toggleComplimentary(supplement.id, "supplement")}
-                          className={
+                          className={`h-5 sm:h-6 px-1.5 sm:px-2 text-[10px] sm:text-xs ${
                             supplement.isComplimentary
-                              ? "bg-green-600 hover:bg-green-700 text-white text-xs"
-                              : "bg-slate-800 border-slate-700 text-white text-xs"
-                          }
+                              ? "bg-green-600 hover:bg-green-700 text-white"
+                              : "bg-slate-800 border-slate-700 text-white"
+                          }`}
                         >
-                          <Gift className="h-3 w-3 mr-1" />
+                          <Gift className="h-2.5 w-2.5 mr-0.5" />
                           Offert
                         </Button>
-                        <Badge className="bg-purple-600 text-xs">Non imprimé sur le ticket</Badge>
+                        <Badge className="bg-purple-600 text-[10px] px-1.5 py-0">Non imprimé</Badge>
                       </div>
                     </div>
                   ))}
