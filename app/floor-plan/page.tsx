@@ -127,14 +127,27 @@ export default function FloorPlanPage() {
 
   useEffect(() => {
     if (user) {
-      fetchTables()
-      fetchReservationsForToday()
-      fetchLayoutSetting()
-      fetchLayouts()
-      fetchVisualLayouts()
-      fetchUserAssignments()
+      // Initial load: wait for ALL data before hiding the loading spinner
+      const fetchInitialData = async () => {
+        try {
+          await Promise.all([
+            fetchTables(),
+            fetchReservationsForToday(),
+            fetchLayoutSetting(),
+            fetchLayouts(),
+            fetchVisualLayouts(),
+            fetchUserAssignments(),
+          ])
+        } catch (e) {
+          console.error("[v0] Error during initial load:", e)
+        } finally {
+          setLoading(false)
+        }
+      }
+      fetchInitialData()
+
       // Refresh periodically
-      const interval = setInterval(fetchTables, 5000) // Augmenté à 5 secondes
+      const interval = setInterval(fetchTables, 5000)
       const rInterval = setInterval(fetchReservationsForToday, 15000)
       const layoutInterval = setInterval(fetchLayoutSetting, 30000)
       const layoutsInterval = setInterval(fetchLayouts, 60000)
@@ -193,8 +206,6 @@ export default function FloorPlanPage() {
       }
     } catch (error) {
       console.error("[v0] Error fetching tables:", error)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -366,7 +377,10 @@ export default function FloorPlanPage() {
     return (
       <>
       <div className="flex min-h-screen items-center justify-center bg-[#DAF6FC]">
-        <div className="text-[#081E3E] text-xl">Chargement...</div>
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#081E3E]/20 border-t-[#081E3E]"></div>
+          <div className="text-[#081E3E] text-lg font-medium">Chargement du plan…</div>
+        </div>
       </div>
 
       {/* Inline Reservation Editor */}

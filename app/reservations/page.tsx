@@ -4,9 +4,10 @@ import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import type { Reservation, Table } from "@/lib/types"
+import type { VisualFloorPlan } from "@/lib/floor-plan-layouts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Calendar, Plus, Phone, Users, Clock, CheckCircle, XCircle, ChevronLeft, ChevronRight, Sun, Moon } from "lucide-react"
+import { ArrowLeft, Calendar, Plus, Phone, Users, Clock, CheckCircle, XCircle, ChevronLeft, ChevronRight, Sun, Moon, Pencil, Trash2, MapPin, X } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
 type ServiceFilter = "all" | "midi" | "soir"
@@ -59,6 +59,30 @@ export default function ReservationsPage() {
     notes: "",
     created_by: "",
   })
+
+  const [addError, setAddError] = useState("")
+
+  // Table picker (visual map) state
+  const [showTablePicker, setShowTablePicker] = useState(false)
+  const [tablePickerTarget, setTablePickerTarget] = useState<"add" | "edit">("add")
+  const [visualLayouts, setVisualLayouts] = useState<VisualFloorPlan[]>([])
+  const [pickerReservations, setPickerReservations] = useState<Record<string, Reservation[]>>({})
+  const [pickerLoading, setPickerLoading] = useState(false)
+
+  // Edit reservation state
+  const [showEditReservation, setShowEditReservation] = useState(false)
+  const [editingReservation, setEditingReservation] = useState<{
+    id: string
+    table_id: string
+    customer_name: string
+    customer_phone: string
+    reservation_date: string
+    reservation_time: string
+    party_size: number
+    duration_minutes: number
+    notes: string
+  } | null>(null)
+  const [editError, setEditError] = useState("")
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -122,33 +146,136 @@ export default function ReservationsPage() {
     }
   }
 
-  const handleAddReservation = async () => {
+  const fetchVisualLayouts = async () => {
     try {
+      const response = await fetch("/api/settings/floor-plan-visual-layouts")
+      if (response.ok) {
+        const data = await response.json()
+        setVisualLayouts(Array.isArray(data?.layouts) ? data.layouts : [])
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const openTablePicker = async (target: "add" | "edit") => {
+    setTablePickerTarget(target)
+    // Close the dialog first so Radix doesn't block clicks
+    if (target === "add") setShowAddReservation(false)
+    else setShowEditReservation(false)
+
+    setPickerLoading(true)
+    setShowTablePicker(true)
+
+    // Fetch visual layouts if not yet loaded
+    if (visualLayouts.length === 0) {
+      await fetchVisualLayouts()
+    }
+
+    // Fetch reservations for the target date
+    const date = target === "add" ? newReservation.reservation_date : editingReservation?.reservation_date
+    if (date) {
+      try {
+        const response = await fetch(`/api/reservations?date=${date}`)
+        if (response.ok) {
+          const data: Reservation[] = await response.json()
+          const map: Record<string, Reservation[]> = {}
+          for (const r of data) {
+            if (r.status === "cancelled") continue
+            if (!map[r.table_id]) map[r.table_id] = []
+            map[r.table_id].push(r)
+          }
+          for (const k of Object.keys(map)) {
+            map[k].sort((a, b) => (a.reservation_time < b.reservation_time ? -1 : 1))
+          }
+          setPickerReservations(map)
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    setPickerLoading(false)
+  }
+
+  const closeTablePicker = () => {
+    setShowTablePicker(false)
+    // Reopen the dialog
+    if (tablePickerTarget === "add") setShowAddReservation(true)
+    else setShowEditReservation(true)
+  }
+
+  const handlePickerTableSelect = (tableId: string) => {
+    if (tablePickerTarget === "add") {
+      setNewReservation((prev) => ({ ...prev, table_id: tableId }))
+    } else if (editingReservation) {
+      setEditingReservation({ ...editingReservation, table_id: tableId })
+    }
+    setShowTablePicker(false)
+    // Reopen the dialog
+    if (tablePickerTarget === "add") setShowAddReservation(true)
+    else setShowEditReservation(true)
+  }
+
+  const getPickerSummary = (tableId: string) => {
+    const arr = pickerReservations[tableId] || []
+    if (arr.length === 0) return ""
+    return arr.map((r) => `${r.party_size}p – ${(r.reservation_time || "").slice(0, 5).replace(":", "h")}`).join(", ")
+  }
+
+  const getTableName = (tableId: string) => {
+    const t = tables.find((t) => t.id === tableId)
+    return t ? `${t.table_number} (${t.seats} pl.)` : ""
+  }
+
+  const handleAddReservation = async () => {
+    setAddError("")
+    const missing: string[] = []
+    if (!newReservation.customer_name.trim()) missing.push("Nom du client")
+    if (!newReservation.customer_phone.trim()) missing.push("Téléphone")
+    if (!newReservation.table_id) missing.push("Table")
+    if (!newReservation.reservation_date) missing.push("Date")
+    if (!newReservation.reservation_time) missing.push("Heure")
+    if (!newReservation.party_size || newReservation.party_size < 1) missing.push("Nombre de personnes")
+    if (missing.length > 0) {
+      setAddError(`Champs obligatoires manquants : ${missing.join(", ")}`)
+      return
+    }
+    try {
+      const payload = {
+        ...newReservation,
+        created_by: user?.id || null,
+      }
       const response = await fetch("/api/reservations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newReservation),
+        body: JSON.stringify(payload),
       })
 
-      if (response.ok) {
-        setShowAddReservation(false)
-        setNewReservation({
-          table_id: "",
-          customer_name: "",
-          customer_phone: "",
-          reservation_date: new Date().toISOString().split("T")[0],
-          reservation_time: "19:00",
-          party_size: 2,
-          duration_minutes: 120,
-          notes: "",
-          created_by: user?.id || "",
-        })
-        fetchReservations()
-        fetchTables()
-        fetchCalendarCounts()
+      if (!response.ok) {
+        const errData = await response.json()
+        setAddError(errData.error || "Erreur lors de la création")
+        return
       }
+
+      setShowAddReservation(false)
+      setAddError("")
+      setNewReservation({
+        table_id: "",
+        customer_name: "",
+        customer_phone: "",
+        reservation_date: new Date().toISOString().split("T")[0],
+        reservation_time: "19:00",
+        party_size: 2,
+        duration_minutes: 120,
+        notes: "",
+        created_by: "",
+      })
+      fetchReservations()
+      fetchTables()
+      fetchCalendarCounts()
     } catch (error) {
       console.error("[v0] Error adding reservation:", error)
+      setAddError("Erreur réseau")
     }
   }
 
@@ -185,6 +312,61 @@ export default function ReservationsPage() {
       }
     } catch (error) {
       console.error("[v0] Error deleting reservation:", error)
+    }
+  }
+
+  const openEditDialog = (reservation: Reservation) => {
+    setEditingReservation({
+      id: reservation.id,
+      table_id: reservation.table_id,
+      customer_name: reservation.customer_name,
+      customer_phone: reservation.customer_phone || "",
+      reservation_date: reservation.reservation_date,
+      reservation_time: (reservation.reservation_time || "").slice(0, 5),
+      party_size: reservation.party_size,
+      duration_minutes: reservation.duration_minutes || 120,
+      notes: reservation.notes || "",
+    })
+    setEditError("")
+    setShowEditReservation(true)
+  }
+
+  const handleEditReservation = async () => {
+    if (!editingReservation) return
+    setEditError("")
+    const missing: string[] = []
+    if (!editingReservation.customer_name.trim()) missing.push("Nom du client")
+    if (!editingReservation.customer_phone.trim()) missing.push("Téléphone")
+    if (!editingReservation.table_id) missing.push("Table")
+    if (!editingReservation.reservation_date) missing.push("Date")
+    if (!editingReservation.reservation_time) missing.push("Heure")
+    if (!editingReservation.party_size || editingReservation.party_size < 1) missing.push("Nombre de personnes")
+    if (missing.length > 0) {
+      setEditError(`Champs obligatoires manquants : ${missing.join(", ")}`)
+      return
+    }
+    try {
+      const { id, ...body } = editingReservation
+      const response = await fetch(`/api/reservations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      if (!response.ok) {
+        const errData = await response.json()
+        setEditError(errData.error || "Erreur lors de la modification")
+        return
+      }
+
+      setShowEditReservation(false)
+      setEditingReservation(null)
+      fetchReservations()
+      fetchTables()
+      fetchCalendarCounts()
+    } catch (error) {
+      console.error("[v0] Error editing reservation:", error)
+      setEditError("Erreur réseau")
     }
   }
 
@@ -339,7 +521,7 @@ export default function ReservationsPage() {
             </button>
           </div>
 
-          <Dialog open={showAddReservation} onOpenChange={setShowAddReservation}>
+          <Dialog open={showAddReservation} onOpenChange={(open) => { setShowAddReservation(open); if (!open) setAddError("") }}>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-green-600 hover:bg-green-700">
                 <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
@@ -352,8 +534,13 @@ export default function ReservationsPage() {
                 <DialogDescription className="text-slate-400 text-sm">Ajouter une nouvelle réservation</DialogDescription>
               </DialogHeader>
               <div className="space-y-3 sm:space-y-4">
+                {addError && (
+                  <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm px-3 py-2 rounded">
+                    {addError}
+                  </div>
+                )}
                 <div>
-                  <Label className="text-sm">Nom du client</Label>
+                  <Label className="text-sm">Nom du client <span className="text-red-400">*</span></Label>
                   <Input
                     value={newReservation.customer_name}
                     onChange={(e) => setNewReservation({ ...newReservation, customer_name: e.target.value })}
@@ -362,7 +549,7 @@ export default function ReservationsPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-sm">Téléphone</Label>
+                  <Label className="text-sm">Téléphone <span className="text-red-400">*</span></Label>
                   <Input
                     value={newReservation.customer_phone}
                     onChange={(e) => setNewReservation({ ...newReservation, customer_phone: e.target.value })}
@@ -372,7 +559,7 @@ export default function ReservationsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <div>
-                    <Label className="text-sm">Date</Label>
+                    <Label className="text-sm">Date <span className="text-red-400">*</span></Label>
                     <Input
                       type="date"
                       value={newReservation.reservation_date}
@@ -381,7 +568,7 @@ export default function ReservationsPage() {
                     />
                   </div>
                   <div>
-                    <Label className="text-sm">Heure</Label>
+                    <Label className="text-sm">Heure <span className="text-red-400">*</span></Label>
                     <Input
                       type="time"
                       value={newReservation.reservation_time}
@@ -405,7 +592,7 @@ export default function ReservationsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <div>
-                    <Label className="text-sm">Nombre de personnes</Label>
+                    <Label className="text-sm">Nombre de personnes <span className="text-red-400">*</span></Label>
                     <Input
                       type="number"
                       value={newReservation.party_size}
@@ -417,22 +604,19 @@ export default function ReservationsPage() {
                     />
                   </div>
                   <div>
-                    <Label className="text-sm">Table</Label>
-                    <Select
-                      value={newReservation.table_id}
-                      onValueChange={(value) => setNewReservation({ ...newReservation, table_id: value })}
+                    <Label className="text-sm">Table <span className="text-red-400">*</span></Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => openTablePicker("add")}
+                      className="w-full justify-start bg-slate-700 border-slate-600 text-sm hover:bg-slate-600 h-10"
                     >
-                      <SelectTrigger className="bg-slate-700 border-slate-600 text-sm">
-                        <SelectValue placeholder="Choisir..." />
-                      </SelectTrigger>
-                      <SelectContent className="bg-slate-700 border-slate-600">
-                        {tables.map((table) => (
-                          <SelectItem key={table.id} value={table.id} className="text-sm">
-                            {table.table_number} ({table.seats} places)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <MapPin className="h-3.5 w-3.5 mr-2 shrink-0 text-blue-400" />
+                      {newReservation.table_id
+                        ? <span className="truncate">{getTableName(newReservation.table_id)}</span>
+                        : <span className="text-slate-400">Choisir sur le plan...</span>
+                      }
+                    </Button>
                   </div>
                 </div>
                 <div>
@@ -445,6 +629,7 @@ export default function ReservationsPage() {
                     rows={3}
                   />
                 </div>
+                <p className="text-xs text-slate-500"><span className="text-red-400">*</span> Champs obligatoires</p>
                 <Button onClick={handleAddReservation} className="w-full bg-green-600 hover:bg-green-700 text-sm">
                   Créer la réservation
                 </Button>
@@ -672,51 +857,351 @@ export default function ReservationsPage() {
                     {reservation.notes}
                   </div>
                 )}
-                {reservation.status === "confirmed" && (
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleUpdateStatus(reservation.id, "seated")}
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
-                    >
-                      <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                      Installer
-                    </Button>
+                {/* Action buttons */}
+                <div className="flex gap-2 pt-2 flex-wrap">
+                  {/* Edit button — always visible for confirmed/seated */}
+                  {(reservation.status === "confirmed" || reservation.status === "seated") && (
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleUpdateStatus(reservation.id, "cancelled")}
-                      className="flex-1 bg-red-900/30 hover:bg-red-900/50 border-red-700 text-red-400 text-xs sm:text-sm"
+                      onClick={() => openEditDialog(reservation)}
+                      className="bg-slate-700 hover:bg-slate-600 border-slate-600 text-slate-300 text-xs sm:text-sm"
                     >
-                      <XCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                      No-show
+                      <Pencil className="h-3 w-3 mr-1" />
+                      Modifier
                     </Button>
-                  </div>
-                )}
-                {reservation.status === "seated" && (
-                  <Button
-                    size="sm"
-                    onClick={() => handleUpdateStatus(reservation.id, "completed")}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
-                  >
-                    Terminer
-                  </Button>
-                )}
-                {(reservation.status === "cancelled" || reservation.status === "completed") && (
+                  )}
+
+                  {reservation.status === "confirmed" && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => handleUpdateStatus(reservation.id, "seated")}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
+                      >
+                        <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        Installer
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleUpdateStatus(reservation.id, "cancelled")}
+                        className="bg-red-900/30 hover:bg-red-900/50 border-red-700 text-red-400 text-xs sm:text-sm"
+                      >
+                        <XCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        No-show
+                      </Button>
+                    </>
+                  )}
+                  {reservation.status === "seated" && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleUpdateStatus(reservation.id, "completed")}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
+                    >
+                      Terminer
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => handleDeleteReservation(reservation.id)}
-                    className="w-full bg-slate-700 hover:bg-slate-600 border-slate-600 text-xs sm:text-sm"
+                    className="bg-red-900/20 hover:bg-red-900/40 border-red-800 text-red-400 text-xs sm:text-sm"
                   >
+                    <Trash2 className="h-3 w-3 mr-1" />
                     Supprimer
                   </Button>
-                )}
+                </div>
               </CardContent>
             </Card>
           ))
         )}
       </div>
+
+      {/* Edit Reservation Dialog */}
+      <Dialog open={showEditReservation} onOpenChange={setShowEditReservation}>
+        <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">Modifier la réservation</DialogTitle>
+            <DialogDescription className="text-slate-400 text-sm">
+              Modifier les informations de la réservation
+            </DialogDescription>
+          </DialogHeader>
+          {editingReservation && (
+            <div className="space-y-3 sm:space-y-4">
+              {editError && (
+                <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm px-3 py-2 rounded">
+                  {editError}
+                </div>
+              )}
+              <div>
+                <Label className="text-sm">Nom du client <span className="text-red-400">*</span></Label>
+                <Input
+                  value={editingReservation.customer_name}
+                  onChange={(e) =>
+                    setEditingReservation({ ...editingReservation, customer_name: e.target.value })
+                  }
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-sm">Téléphone <span className="text-red-400">*</span></Label>
+                <Input
+                  value={editingReservation.customer_phone}
+                  onChange={(e) =>
+                    setEditingReservation({ ...editingReservation, customer_phone: e.target.value })
+                  }
+                  className="bg-slate-700 border-slate-600 text-sm"
+                  placeholder="06 12 34 56 78"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                <div>
+                  <Label className="text-sm">Date <span className="text-red-400">*</span></Label>
+                  <Input
+                    type="date"
+                    value={editingReservation.reservation_date}
+                    onChange={(e) =>
+                      setEditingReservation({ ...editingReservation, reservation_date: e.target.value })
+                    }
+                    className="bg-slate-700 border-slate-600 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Heure <span className="text-red-400">*</span></Label>
+                  <Input
+                    type="time"
+                    value={editingReservation.reservation_time}
+                    onChange={(e) =>
+                      setEditingReservation({ ...editingReservation, reservation_time: e.target.value })
+                    }
+                    className="bg-slate-700 border-slate-600 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm">Durée (minutes)</Label>
+                <Input
+                  type="number"
+                  min="15"
+                  step="5"
+                  value={editingReservation.duration_minutes}
+                  onChange={(e) =>
+                    setEditingReservation({
+                      ...editingReservation,
+                      duration_minutes: Number.parseInt(e.target.value || "0"),
+                    })
+                  }
+                  className="bg-slate-700 border-slate-600 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                <div>
+                  <Label className="text-sm">Nombre de personnes <span className="text-red-400">*</span></Label>
+                  <Input
+                    type="number"
+                    value={editingReservation.party_size}
+                    onChange={(e) =>
+                      setEditingReservation({
+                        ...editingReservation,
+                        party_size: Number.parseInt(e.target.value),
+                      })
+                    }
+                    className="bg-slate-700 border-slate-600 text-sm"
+                    min="1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Table <span className="text-red-400">*</span></Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => openTablePicker("edit")}
+                    className="w-full justify-start bg-slate-700 border-slate-600 text-sm hover:bg-slate-600 h-10"
+                  >
+                    <MapPin className="h-3.5 w-3.5 mr-2 shrink-0 text-blue-400" />
+                    {editingReservation.table_id
+                      ? <span className="truncate">{getTableName(editingReservation.table_id)}</span>
+                      : <span className="text-slate-400">Choisir sur le plan...</span>
+                    }
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm">Notes</Label>
+                <Textarea
+                  value={editingReservation.notes}
+                  onChange={(e) =>
+                    setEditingReservation({ ...editingReservation, notes: e.target.value })
+                  }
+                  className="bg-slate-700 border-slate-600 text-sm"
+                  placeholder="Allergies, demandes spéciales..."
+                  rows={3}
+                />
+              </div>
+              <p className="text-xs text-slate-500"><span className="text-red-400">*</span> Champs obligatoires</p>
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleEditReservation}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-sm"
+                >
+                  Enregistrer
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowEditReservation(false)}
+                  className="bg-slate-700 hover:bg-slate-600 border-slate-600 text-sm"
+                >
+                  Annuler
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Visual Table Picker (full-screen overlay) ─── */}
+      {showTablePicker && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900 flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-700 shrink-0">
+            <div className="flex items-center gap-3">
+              <MapPin className="h-5 w-5 text-blue-400" />
+              <div>
+                <h2 className="text-white font-semibold text-sm sm:text-base">Choisir une table</h2>
+                <p className="text-slate-400 text-xs">
+                  Réservations du{" "}
+                  {new Date(
+                    (tablePickerTarget === "add" ? newReservation.reservation_date : editingReservation?.reservation_date) || ""
+                  ).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                  {" · "}
+                  <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: "#16a34a" }} /> Dispo</span>
+                  {" · "}
+                  <span className="inline-flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: "#ea580c" }} /> Réservée</span>
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={closeTablePicker}
+              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Map content — fills all remaining space */}
+          <div className="flex-1 min-h-0 overflow-hidden relative">
+            {pickerLoading ? (
+              <div className="flex items-center justify-center h-full w-full">
+                <div className="text-slate-400 text-sm animate-pulse">Chargement du plan...</div>
+              </div>
+            ) : visualLayouts.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center space-y-4 py-8">
+                  <p className="text-slate-400 text-sm">Aucun plan visuel configuré.</p>
+                  <p className="text-slate-500 text-xs">Sélection classique :</p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-w-lg mx-auto">
+                    {tables.map((table) => {
+                      const hasResa = (pickerReservations[table.id] || []).length > 0
+                      return (
+                        <button
+                          key={table.id}
+                          onClick={() => handlePickerTableSelect(table.id)}
+                          className={`p-3 rounded-lg text-white font-medium text-sm transition-all hover:scale-105 active:scale-95 ${
+                            hasResa ? "bg-orange-600 hover:bg-orange-500" : "bg-green-600 hover:bg-green-500"
+                          }`}
+                        >
+                          <div>{table.table_number}</div>
+                          <div className="text-[10px] opacity-80">{table.seats} pl.</div>
+                          {hasResa && (
+                            <div className="text-[9px] mt-1 opacity-90">{getPickerSummary(table.id)}</div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {visualLayouts.map((layout) => (
+                  <div
+                    key={layout.id}
+                    className="absolute inset-0 bg-[#c8edf5]"
+                  >
+                      {layout.items.map((item) => {
+                        if (item.type === "decoration") {
+                          return (
+                            <div
+                              key={item.id}
+                              className="absolute flex items-center justify-center text-white font-bold select-none pointer-events-none"
+                              style={{
+                                left: `${item.x}%`,
+                                top: `${item.y}%`,
+                                width: `${item.width}%`,
+                                height: `${item.height}%`,
+                                backgroundColor: item.color || "#64748b",
+                                borderRadius: item.shape === "round" ? "50%" : "4px",
+                                fontSize: "clamp(8px, 1.2vw, 14px)",
+                                opacity: 0.8,
+                                border: "1px solid rgba(255,255,255,0.2)",
+                                transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
+                              }}
+                            >
+                              <span className="truncate px-1">{item.label}</span>
+                            </div>
+                          )
+                        }
+
+                        // Table item
+                        const table = tables.find((t) => t.id === item.tableId)
+                        if (!table) return null
+                        const resasForTable = pickerReservations[table.id] || []
+                        const hasResa = resasForTable.length > 0
+                        const isCurrentlySelected =
+                          (tablePickerTarget === "add" ? newReservation.table_id : editingReservation?.table_id) === table.id
+
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => handlePickerTableSelect(table.id)}
+                            className={`absolute flex flex-col items-center justify-center text-white font-bold select-none cursor-pointer transition-all hover:scale-110 active:scale-95 ${
+                              isCurrentlySelected ? "ring-3 ring-yellow-400 z-30" : "z-10"
+                            }`}
+                            style={{
+                              left: `${item.x}%`,
+                              top: `${item.y}%`,
+                              width: `${item.width}%`,
+                              height: `${item.height}%`,
+                              backgroundColor: isCurrentlySelected ? "#eab308" : hasResa ? "#ea580c" : "#16a34a",
+                              borderRadius: item.shape === "round" ? "50%" : "6px",
+                              fontSize: "clamp(9px, 1.2vw, 16px)",
+                              border: isCurrentlySelected
+                                ? "3px solid #fde047"
+                                : "2px solid rgba(255,255,255,0.3)",
+                              boxShadow: isCurrentlySelected
+                                ? "0 0 12px rgba(234, 179, 8, 0.5)"
+                                : "0 2px 6px rgba(0,0,0,0.2)",
+                              transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
+                            }}
+                          >
+                            <span className="leading-tight">{table.table_number}</span>
+                            <span className="text-[7px] sm:text-[9px] opacity-80">{table.seats} pl.</span>
+                            {hasResa && (
+                              <span className="text-[7px] sm:text-[9px] opacity-90 leading-tight max-w-full truncate px-0.5">
+                                {getPickerSummary(table.id)}
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -70,9 +70,16 @@ export async function POST(request: NextRequest) {
     // Update table status to reserved
     await supabase.from("tables").update({ status: "reserved" }).eq("id", body.table_id)
 
+    // Sanitize UUID fields: convert empty strings to null
+    const sanitizedBody = { ...body, duration_minutes: NEW_SLOT_MINUTES }
+    if (!sanitizedBody.created_by) sanitizedBody.created_by = null
+    if (!sanitizedBody.table_id) {
+      return NextResponse.json({ error: "table_id est requis" }, { status: 400 })
+    }
+
     const { data, error } = await supabase
       .from("reservations")
-      .insert({ ...body, duration_minutes: NEW_SLOT_MINUTES })
+      .insert(sanitizedBody)
       .select()
       .single()
 
