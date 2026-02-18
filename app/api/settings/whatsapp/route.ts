@@ -67,6 +67,32 @@ export async function POST(request: Request) {
 
     if (error) throw error
 
+    // Update ALL future reservations (pending/confirmed) retroactively
+    const today = new Date().toISOString().split("T")[0]
+
+    if (body.confirmation_enabled !== undefined) {
+      await supabase
+        .from("reservations")
+        .update({
+          whatsapp_confirmation_requested: body.confirmation_enabled,
+          // Reset sent flag if re-enabling so they get sent again
+          ...(body.confirmation_enabled ? { whatsapp_confirmation_sent: false } : {}),
+        })
+        .gte("reservation_date", today)
+        .in("status", ["pending", "confirmed"])
+    }
+
+    if (body.review_enabled !== undefined) {
+      await supabase
+        .from("reservations")
+        .update({
+          whatsapp_review_requested: body.review_enabled,
+          ...(body.review_enabled ? { whatsapp_review_sent: false } : {}),
+        })
+        .gte("reservation_date", today)
+        .in("status", ["pending", "confirmed", "seated"])
+    }
+
     return NextResponse.json(updated)
   } catch (error) {
     console.error("[v0] Error saving WhatsApp settings:", error)

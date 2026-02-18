@@ -49,7 +49,7 @@ export interface Reservation {
   reservation_time: string
   party_size: number
   notes?: string
-  status: "confirmed" | "seated" | "cancelled" | "completed"
+  status: "pending" | "confirmed" | "seated" | "cancelled" | "completed"
   duration_minutes?: number
   created_at: string
   created_by?: string

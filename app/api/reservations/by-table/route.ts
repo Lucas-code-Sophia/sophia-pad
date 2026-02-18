@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       .from("reservations")
       .select("*")
       .eq("table_id", tableId)
-      .eq("status", "confirmed")
+      .in("status", ["pending", "confirmed"])
       .order("reservation_date", { ascending: false })
       .order("reservation_time", { ascending: false })
       .limit(1)

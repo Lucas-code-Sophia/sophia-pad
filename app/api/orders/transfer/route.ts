@@ -20,7 +20,7 @@ const hasReservationInNext90 = async (supabase: any, tableId: string) => {
     .from("reservations")
     .select("reservation_date, reservation_time, status")
     .eq("table_id", tableId)
-    .eq("status", "confirmed")
+    .in("status", ["pending", "confirmed"])
     .in("reservation_date", dates)
 
   if (error) {

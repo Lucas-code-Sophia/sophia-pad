@@ -44,7 +44,7 @@ export async function GET(request: Request) {
       .from("reservations")
       .select("table_id, reservation_date, reservation_time, status")
       .in("table_id", tableIds)
-      .eq("status", "confirmed")
+      .in("status", ["pending", "confirmed"])
       .in("reservation_date", endMinutes > 1440 ? [today, tomorrow] : [today])
 
     if (resError) {

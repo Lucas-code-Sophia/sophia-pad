@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       .select("reservation_date, reservation_time, status")
       .gte("reservation_date", startDate)
       .lte("reservation_date", endDate)
-      .in("status", ["confirmed", "seated"]) // Only active reservations
+      .in("status", ["pending", "confirmed", "seated"]) // Only active reservations
 
     if (error) throw error
 

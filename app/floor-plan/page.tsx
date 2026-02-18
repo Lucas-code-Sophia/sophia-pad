@@ -221,7 +221,7 @@ export default function FloorPlanPage() {
         const data: Reservation[] = await response.json()
         const map: Record<string, Reservation[]> = {}
         for (const r of data) {
-          if (r.status !== "confirmed") continue
+          if (r.status !== "pending" && r.status !== "confirmed") continue
           if (!map[r.table_id]) map[r.table_id] = []
           map[r.table_id].push(r)
         }
@@ -317,7 +317,7 @@ export default function FloorPlanPage() {
           setReservationsForDay(Array.isArray(data) ? data : [])
           // Preselect the next upcoming confirmed reservation if any
           const upcoming = (Array.isArray(data) ? data : [])
-            .filter((r: Reservation) => r.status === "confirmed")
+            .filter((r: Reservation) => r.status === "pending" || r.status === "confirmed")
             .sort((a: Reservation, b: Reservation) => (a.reservation_time < b.reservation_time ? -1 : 1))
           setReservationEdit(upcoming[0] ?? null)
         } else {

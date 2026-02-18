@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       .select("id, reservation_time, status, duration_minutes")
       .eq("table_id", body.table_id)
       .eq("reservation_date", body.reservation_date)
-      .in("status", ["confirmed", "seated"]) // only active bookings block
+      .in("status", ["pending", "confirmed", "seated"]) // only active bookings block
 
     if (fetchErr) throw fetchErr
 

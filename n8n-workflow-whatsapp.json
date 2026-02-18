@@ -31,7 +31,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?whatsapp_confirmation_requested=eq.true&whatsapp_confirmation_sent=eq.false&reservation_date=eq.{{ $json.target_date }}&status=eq.confirmed&select=id,customer_name,customer_phone,reservation_date,reservation_time,party_size,tables(table_number)",
+        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?whatsapp_confirmation_requested=eq.true&whatsapp_confirmation_sent=eq.false&reservation_date=eq.{{ $json.target_date }}&status=in.(pending,confirmed)&select=id,customer_name,customer_phone,reservation_date,reservation_time,party_size,tables(table_number)",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -414,7 +414,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?customer_phone=ilike.*{{ $json.search_phone_main.slice(-9) }}&status=eq.confirmed&reservation_date=gte.{{ new Date().toISOString().split('T')[0] }}&order=reservation_date.asc&limit=1&select=id,customer_name,customer_phone,reservation_date,reservation_time,party_size,status",
+        "url": "=https://geqxvlieqwrssuipypju.supabase.co/rest/v1/reservations?customer_phone=ilike.*{{ $json.search_phone_main.slice(-9) }}&status=in.(pending,confirmed)&reservation_date=gte.{{ new Date().toISOString().split('T')[0] }}&order=reservation_date.asc&limit=1&select=id,customer_name,customer_phone,reservation_date,reservation_time,party_size,status",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "sendHeaders": true,

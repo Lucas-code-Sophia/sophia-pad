@@ -18,7 +18,7 @@ export async function POST() {
       .from("reservations")
       .select("id, table_id")
       .lt("reservation_date", todayStr)
-      .eq("status", "confirmed")
+      .in("status", ["pending", "confirmed"])
 
     if (fetchError) throw fetchError
 

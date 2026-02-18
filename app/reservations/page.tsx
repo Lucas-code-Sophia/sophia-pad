@@ -275,7 +275,15 @@ export default function ReservationsPage() {
   const getPickerSummary = (tableId: string) => {
     const arr = pickerReservations[tableId] || []
     if (arr.length === 0) return ""
-    return arr.map((r) => `${r.party_size}p – ${(r.reservation_time || "").slice(0, 5).replace(":", "h")}`).join(", ")
+    return arr.map((r) => {
+      const prefix = r.status === "pending" ? "⏳ " : ""
+      return `${prefix}${r.party_size}p – ${(r.reservation_time || "").slice(0, 5).replace(":", "h")}`
+    }).join(", ")
+  }
+
+  const hasOnlyPendingResas = (tableId: string) => {
+    const arr = pickerReservations[tableId] || []
+    return arr.length > 0 && arr.every((r) => r.status === "pending")
   }
 
   const getTableName = (tableId: string) => {
@@ -544,6 +552,7 @@ export default function ReservationsPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case "pending": return "bg-amber-600"
       case "confirmed": return "bg-blue-600"
       case "seated": return "bg-green-600"
       case "cancelled": return "bg-red-600"
@@ -554,6 +563,7 @@ export default function ReservationsPage() {
 
   const getStatusText = (status: string) => {
     switch (status) {
+      case "pending": return "En attente de confirmation"
       case "confirmed": return "Confirmée"
       case "seated": return "Installée"
       case "cancelled": return "Annulée"
@@ -954,7 +964,7 @@ export default function ReservationsPage() {
           </Card>
         ) : (
           filteredReservations.map((reservation) => (
-            <Card key={reservation.id} className="bg-slate-800 border-slate-700">
+            <Card key={reservation.id} className={`bg-slate-800 ${reservation.status === "pending" ? "border-amber-500/60 border-2" : "border-slate-700"}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -1053,8 +1063,8 @@ export default function ReservationsPage() {
                 )}
                 {/* Action buttons */}
                 <div className="flex gap-2 pt-2 flex-wrap">
-                  {/* Edit button — always visible for confirmed/seated */}
-                  {(reservation.status === "confirmed" || reservation.status === "seated") && (
+                  {/* Edit button — visible for pending/confirmed/seated */}
+                  {(reservation.status === "pending" || reservation.status === "confirmed" || reservation.status === "seated") && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1064,6 +1074,29 @@ export default function ReservationsPage() {
                       <Pencil className="h-3 w-3 mr-1" />
                       Modifier
                     </Button>
+                  )}
+
+                  {/* Confirm button — only for pending */}
+                  {reservation.status === "pending" && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => handleUpdateStatus(reservation.id, "confirmed")}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
+                      >
+                        <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        Confirmer
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleUpdateStatus(reservation.id, "cancelled")}
+                        className="bg-red-900/30 hover:bg-red-900/50 border-red-700 text-red-400 text-xs sm:text-sm"
+                      >
+                        <XCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        Annuler
+                      </Button>
+                    </>
                   )}
 
                   {reservation.status === "confirmed" && (
@@ -1297,12 +1330,15 @@ export default function ReservationsPage() {
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-w-lg mx-auto">
                     {tables.map((table) => {
                       const hasResa = (pickerReservations[table.id] || []).length > 0
+                      const onlyPending = hasOnlyPendingResas(table.id)
                       return (
                         <button
                           key={table.id}
                           onClick={() => handlePickerTableSelect(table.id)}
                           className={`p-3 rounded-lg text-white font-medium text-sm transition-all hover:scale-105 active:scale-95 ${
-                            hasResa ? "bg-orange-600 hover:bg-orange-500" : "bg-green-600 hover:bg-green-500"
+                            hasResa
+                              ? onlyPending ? "bg-amber-600 hover:bg-amber-500" : "bg-orange-600 hover:bg-orange-500"
+                              : "bg-green-600 hover:bg-green-500"
                           }`}
                         >
                           <div>{table.table_number}</div>
@@ -1352,6 +1388,7 @@ export default function ReservationsPage() {
                         if (!table) return null
                         const resasForTable = pickerReservations[table.id] || []
                         const hasResa = resasForTable.length > 0
+                        const onlyPending = hasOnlyPendingResas(table.id)
                         const isCurrentlySelected =
                           (tablePickerTarget === "add" ? newReservation.table_id : editingReservation?.table_id) === table.id
 
@@ -1367,7 +1404,7 @@ export default function ReservationsPage() {
                               top: `${item.y}%`,
                               width: `${item.width}%`,
                               height: `${item.height}%`,
-                              backgroundColor: isCurrentlySelected ? "#eab308" : hasResa ? "#ea580c" : "#16a34a",
+                              backgroundColor: isCurrentlySelected ? "#eab308" : hasResa ? (onlyPending ? "#d97706" : "#ea580c") : "#16a34a",
                               borderRadius: item.shape === "round" ? "50%" : "6px",
                               fontSize: "clamp(9px, 1.2vw, 16px)",
                               border: isCurrentlySelected

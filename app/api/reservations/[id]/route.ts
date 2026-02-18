@@ -31,7 +31,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         .eq("table_id", targetTable)
         .eq("reservation_date", targetDate)
         .neq("id", id)
-        .in("status", ["confirmed", "seated"]) // only active bookings block
+        .in("status", ["pending", "confirmed", "seated"]) // only active bookings block
 
       if (fetchErr) throw fetchErr
 
