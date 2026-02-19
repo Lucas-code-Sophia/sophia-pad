@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle, CheckCircle, Settings, Edit, ArrowUp, ArrowDown, Palette } from "lucide-react"
+import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle, CheckCircle, Settings, Edit, ArrowUp, ArrowDown, Palette, ShieldAlert } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import type { MenuCategory, MenuItem } from "@/lib/types"
+import type { MenuCategory, MenuItem, Allergen } from "@/lib/types"
 import { MENU_BUTTON_COLORS } from "@/lib/menu-colors"
 
 export default function MenuEditorPage() {
@@ -26,6 +26,13 @@ export default function MenuEditorPage() {
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoadingMenu, setIsLoadingMenu] = useState(true)
+  const [allergens, setAllergens] = useState<Allergen[]>([])
+  const [allergenDialog, setAllergenDialog] = useState(false)
+  const [newAllergenName, setNewAllergenName] = useState("")
+  const [newAllergenEmoji, setNewAllergenEmoji] = useState("⚠️")
+  const [editingAllergen, setEditingAllergen] = useState<Allergen | null>(null)
+  const [allergenMap, setAllergenMap] = useState<Record<string, Allergen[]>>({})
+  const [itemAllergenIds, setItemAllergenIds] = useState<string[]>([])
   const [newItem, setNewItem] = useState({
     name: "",
     price: "",
@@ -52,7 +59,12 @@ export default function MenuEditorPage() {
   const fetchMenu = async () => {
     setIsLoadingMenu(true)
     try {
-      const [itemsRes, categoriesRes] = await Promise.all([fetch("/api/menu/items"), fetch("/api/menu/categories")])
+      const [itemsRes, categoriesRes, allergensRes, allergenMapRes] = await Promise.all([
+        fetch("/api/menu/items"),
+        fetch("/api/menu/categories"),
+        fetch("/api/allergens"),
+        fetch("/api/menu/allergen-map"),
+      ])
 
       if (itemsRes.ok) {
         const items = await itemsRes.json()
@@ -62,6 +74,16 @@ export default function MenuEditorPage() {
       if (categoriesRes.ok) {
         const cats = await categoriesRes.json()
         setCategories(cats)
+      }
+
+      if (allergensRes.ok) {
+        const data = await allergensRes.json()
+        setAllergens(data)
+      }
+
+      if (allergenMapRes.ok) {
+        const data = await allergenMapRes.json()
+        setAllergenMap(data)
       }
     } catch (error) {
       console.error("[v0] Error fetching menu:", error)
@@ -92,8 +114,21 @@ export default function MenuEditorPage() {
       })
 
       if (response.ok) {
+        const savedItem = await response.json()
+        const itemId = editingItem ? editingItem.id : savedItem.id
+
+        // Save allergen assignments
+        if (itemId) {
+          await fetch(`/api/menu/items/${itemId}/allergens`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ allergen_ids: itemAllergenIds }),
+          })
+        }
+
         setEditDialog(false)
         setEditingItem(null)
+        setItemAllergenIds([])
         setNewItem({ name: "", price: "", tax_rate: "20", category: "", routing: "kitchen", out_of_stock: false, button_color: "", status: true })
         fetchMenu()
       }
@@ -244,6 +279,59 @@ export default function MenuEditorPage() {
     }
   }
 
+  // --- Allergen CRUD ---
+  const handleSaveAllergen = async () => {
+    if (!newAllergenName.trim()) return
+    try {
+      if (editingAllergen) {
+        await fetch(`/api/allergens/${editingAllergen.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newAllergenName.trim(), emoji: newAllergenEmoji }),
+        })
+      } else {
+        await fetch("/api/allergens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newAllergenName.trim(), emoji: newAllergenEmoji }),
+        })
+      }
+      setNewAllergenName("")
+      setNewAllergenEmoji("⚠️")
+      setEditingAllergen(null)
+      // Refresh allergens
+      const res = await fetch("/api/allergens")
+      if (res.ok) setAllergens(await res.json())
+    } catch (error) {
+      console.error("[v0] Error saving allergen:", error)
+    }
+  }
+
+  const handleDeleteAllergen = async (id: string) => {
+    if (!confirm("Supprimer cet allergène ?")) return
+    try {
+      await fetch(`/api/allergens/${id}`, { method: "DELETE" })
+      const res = await fetch("/api/allergens")
+      if (res.ok) setAllergens(await res.json())
+    } catch (error) {
+      console.error("[v0] Error deleting allergen:", error)
+    }
+  }
+
+  const openEditItemDialog = async (item: MenuItem) => {
+    setEditingItem(item)
+    // Load existing allergens for this item
+    const itemAllergens = allergenMap[item.id] || []
+    setItemAllergenIds(itemAllergens.map((a) => a.id))
+    setEditDialog(true)
+  }
+
+  const toggleItemAllergen = (allergenId: string) => {
+    setItemAllergenIds((prev) =>
+      prev.includes(allergenId) ? prev.filter((id) => id !== allergenId) : [...prev, allergenId]
+    )
+  }
+
   const filteredMenuItems = menuItems.filter(
     (item) =>
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -294,6 +382,15 @@ export default function MenuEditorPage() {
             <span className="text-xs sm:text-sm">Catégories</span>
           </Button>
           <Button
+            onClick={() => setAllergenDialog(true)}
+            variant="outline"
+            size="sm"
+            className="bg-amber-700 text-white border-amber-600 hover:bg-amber-600"
+          >
+            <ShieldAlert className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="text-xs sm:text-sm">Allergènes</span>
+          </Button>
+          <Button
             onClick={() => setColorHelpDialog(true)}
             variant="outline"
             size="sm"
@@ -305,6 +402,7 @@ export default function MenuEditorPage() {
           <Button
             onClick={() => {
               setEditingItem(null)
+              setItemAllergenIds([])
               setEditDialog(true)
             }}
             size="sm"
@@ -370,6 +468,15 @@ export default function MenuEditorPage() {
                       <div className="text-xs sm:text-sm text-slate-400">
                         {item.price.toFixed(2)} € • TVA {item.tax_rate}% • {item.routing === "kitchen" ? "Cuisine" : "Bar"}
                       </div>
+                      {allergenMap[item.id] && allergenMap[item.id].length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {allergenMap[item.id].map((a) => (
+                            <span key={a.id} className="text-xs bg-amber-900/40 text-amber-300 border border-amber-700/50 rounded px-1.5 py-0.5">
+                              {a.emoji} {a.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-1.5 sm:gap-2 flex-shrink-0">
                       <Button
@@ -397,10 +504,7 @@ export default function MenuEditorPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          setEditingItem(item)
-                          setEditDialog(true)
-                        }}
+                        onClick={() => openEditItemDialog(item)}
                         className="bg-slate-600 hover:bg-slate-500 border-slate-500 h-8 w-8 sm:h-9 sm:w-9 p-0"
                       >
                         <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -571,9 +675,129 @@ export default function MenuEditorPage() {
                 <option value="true">Rupture</option>
               </select>
             </div>
+            {/* Allergen assignment */}
+            {allergens.length > 0 && (
+              <div>
+                <Label className="text-sm">Allergènes</Label>
+                <div className="flex flex-wrap gap-1.5 mt-1.5 p-2 bg-slate-700/50 rounded-md max-h-32 overflow-y-auto">
+                  {allergens.map((allergen) => {
+                    const isSelected = itemAllergenIds.includes(allergen.id)
+                    return (
+                      <button
+                        key={allergen.id}
+                        type="button"
+                        onClick={() => toggleItemAllergen(allergen.id)}
+                        className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                          isSelected
+                            ? "bg-amber-600 border-amber-500 text-white"
+                            : "bg-slate-700 border-slate-600 text-slate-300 hover:border-amber-500"
+                        }`}
+                      >
+                        {allergen.emoji} {allergen.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             <Button onClick={handleSaveItem} className="w-full bg-blue-600 hover:bg-blue-700 text-sm">
               {editingItem ? "Enregistrer" : "Créer"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog pour la gestion des allergènes */}
+      <Dialog open={allergenDialog} onOpenChange={setAllergenDialog}>
+        <DialogContent className="bg-slate-800 text-white border-slate-700 max-w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-400" />
+              Gérer les allergènes
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm">
+                {editingAllergen ? "Modifier l'allergène" : "Nouvel allergène"}
+              </Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  value={newAllergenEmoji}
+                  onChange={(e) => setNewAllergenEmoji(e.target.value)}
+                  placeholder="Emoji"
+                  className="bg-slate-700 border-slate-600 text-sm w-16 text-center"
+                  maxLength={4}
+                />
+                <Input
+                  value={newAllergenName}
+                  onChange={(e) => setNewAllergenName(e.target.value)}
+                  placeholder="Nom de l'allergène"
+                  className="bg-slate-700 border-slate-600 text-sm flex-1"
+                />
+                <Button
+                  onClick={handleSaveAllergen}
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-700 text-sm px-3"
+                >
+                  {editingAllergen ? <CheckCircle className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                </Button>
+                {editingAllergen && (
+                  <Button
+                    onClick={() => {
+                      setEditingAllergen(null)
+                      setNewAllergenName("")
+                      setNewAllergenEmoji("⚠️")
+                    }}
+                    size="sm"
+                    variant="outline"
+                    className="bg-slate-600 hover:bg-slate-500 text-sm px-3"
+                  >
+                    ✕
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-sm">Allergènes existants ({allergens.length})</Label>
+              <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
+                {allergens.length === 0 ? (
+                  <p className="text-slate-400 text-sm">Aucun allergène</p>
+                ) : (
+                  allergens.map((allergen) => (
+                    <div key={allergen.id} className="flex items-center justify-between p-2 bg-slate-700 rounded">
+                      <span className="text-sm text-white">
+                        {allergen.emoji} {allergen.name}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingAllergen(allergen)
+                            setNewAllergenName(allergen.name)
+                            setNewAllergenEmoji(allergen.emoji)
+                          }}
+                          className="bg-slate-600 hover:bg-slate-500 border-slate-500 text-white h-6 w-6 p-0"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteAllergen(allergen.id)}
+                          className="bg-red-900/30 hover:bg-red-900/50 border-red-700 text-red-400 h-6 w-6 p-0"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

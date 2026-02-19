@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Plus, Minus, Send, Clock, DollarSign, Gift, AlertCircle } from "lucide-react"
+import { ArrowLeft, Plus, Minus, Send, Clock, DollarSign, Gift, AlertCircle, ShieldAlert } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -102,6 +102,8 @@ export default function OrderPage() {
   const [vinBouteilleDialogOpen, setVinBouteilleDialogOpen] = useState(false)
   const [vinBouteilleItem, setVinBouteilleItem] = useState<MenuItem | null>(null)
   const [hasOrderedWineBottle, setHasOrderedWineBottle] = useState(false)
+  const [showAllergens, setShowAllergens] = useState(false)
+  const [allergenMap, setAllergenMap] = useState<Record<string, Array<{ id: string; name: string; emoji: string }>>>({})
 
   // Timer : temps écoulé depuis l'ouverture de la commande
   useEffect(() => {
@@ -247,9 +249,21 @@ export default function OrderPage() {
     return []
   }
 
+  const fetchAllergenMap = async () => {
+    try {
+      const res = await fetch("/api/menu/allergen-map")
+      if (res.ok) {
+        const data = await res.json()
+        setAllergenMap(data)
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching allergen map:", error)
+    }
+  }
+
   const fetchBaseData = async () => {
     try {
-      await Promise.all([fetchCategories(), fetchMenuItems()])
+      await Promise.all([fetchCategories(), fetchMenuItems(), fetchAllergenMap()])
     } catch (error) {
       console.error("[v0] Error fetching base data:", error)
     }
@@ -1168,7 +1182,23 @@ export default function OrderPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4">
         {/* Menu Section */}
         <div className="lg:col-span-8">
-          {/* Categories */}
+          {/* Categories + Allergen toggle */}
+          <div className="mb-3 sm:mb-4 flex gap-1.5 sm:gap-2 overflow-x-auto pb-2">
+            <Button
+              onClick={() => setShowAllergens(!showAllergens)}
+              size="sm"
+              variant={showAllergens ? "default" : "outline"}
+              className={
+                showAllergens
+                  ? "bg-amber-600 text-white hover:bg-amber-700 whitespace-nowrap text-xs sm:text-sm flex-shrink-0"
+                  : "bg-slate-800 text-amber-400 border-amber-600/50 hover:bg-amber-900/30 whitespace-nowrap text-xs sm:text-sm flex-shrink-0"
+              }
+            >
+              <ShieldAlert className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+              Allergènes
+            </Button>
+            <div className="w-px bg-slate-700 flex-shrink-0" />
+          </div>
           <div className="mb-3 sm:mb-4 flex gap-1.5 sm:gap-2 overflow-x-auto pb-2">
             {categories.map((category) => (
               <Button
@@ -1236,6 +1266,20 @@ export default function OrderPage() {
                         >
                           <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
                         </Button>
+                      </div>
+                    )}
+                    {/* Allergen badges */}
+                    {showAllergens && allergenMap[item.id] && allergenMap[item.id].length > 0 && (
+                      <div className="flex flex-wrap justify-center gap-0.5 mt-1.5 pt-1.5 border-t border-slate-600/50">
+                        {allergenMap[item.id].map((a) => (
+                          <span
+                            key={a.id}
+                            className="text-[10px] leading-tight"
+                            title={a.name}
+                          >
+                            {a.emoji}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>

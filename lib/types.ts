@@ -218,6 +218,21 @@ export interface Supplement {
   created_at: string
 }
 
+export interface Allergen {
+  id: string
+  name: string
+  emoji: string
+  sort_order: number
+  created_at: string
+}
+
+export interface MenuItemAllergen {
+  id: string
+  menu_item_id: string
+  allergen_id: string
+  created_at: string
+}
+
 export interface PlanningFolder {
   id: string
   name: string
