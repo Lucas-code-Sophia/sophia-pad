@@ -127,3 +127,17 @@ Table 7 - Serveur A
 **Date**: 2026-01-19  
 **Priorité**: CRITIQUE  
 **Impact**: Service restaurant complet
+
+---
+
+## 📌 FEATURES FUTURES (À FAIRE PLUS TARD)
+
+### 📧 Newsletter / Emailing clients
+- Recontacter les clients pour des événements, menus spéciaux, soirées à thème
+- Exploiter la base de numéros de téléphone des réservations
+- Possible via n8n + service email (Brevo/Mailchimp gratuit) ou WhatsApp broadcast
+
+### 🎨 Thèmes personnalisables
+- Couleurs de l'interface selon le restaurant (si vente de l'app)
+
+**Ajouté le**: 2026-02-19

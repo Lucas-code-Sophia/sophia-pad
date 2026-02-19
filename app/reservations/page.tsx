@@ -7,7 +7,7 @@ import type { Reservation, Table } from "@/lib/types"
 import type { VisualFloorPlan } from "@/lib/floor-plan-layouts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Calendar, Plus, Phone, Users, Clock, CheckCircle, XCircle, ChevronLeft, ChevronRight, Sun, Moon, Pencil, Trash2, MapPin, X, MessageCircle, Star } from "lucide-react"
+import { ArrowLeft, Calendar, Plus, Phone, Users, Clock, CheckCircle, XCircle, ChevronLeft, ChevronRight, Sun, Moon, Pencil, Trash2, MapPin, X, MessageCircle, Star, Heart } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -47,6 +47,9 @@ export default function ReservationsPage() {
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth() + 1) // 1-based
   const [calendarCounts, setCalendarCounts] = useState<CalendarCounts>({})
   const [calendarLoading, setCalendarLoading] = useState(false)
+
+  // Customer visit counts (loyalty)
+  const [customerVisits, setCustomerVisits] = useState<Record<string, number>>({})
 
   // WhatsApp global settings (admin/manager only)
   const [waConfirmEnabled, setWaConfirmEnabled] = useState(false)
@@ -117,6 +120,23 @@ export default function ReservationsPage() {
       if (response.ok) {
         const data = await response.json()
         setReservations(data)
+
+        // Fetch customer visit counts
+        const phones = data
+          .map((r: Reservation) => r.customer_phone)
+          .filter(Boolean)
+        const uniquePhones = [...new Set(phones)] as string[]
+        if (uniquePhones.length > 0) {
+          try {
+            const visitsRes = await fetch(`/api/reservations/customer-visits?phones=${encodeURIComponent(uniquePhones.join(","))}`)
+            if (visitsRes.ok) {
+              const visits = await visitsRes.json()
+              setCustomerVisits(visits)
+            }
+          } catch {
+            // Silently fail - visit counts are non-critical
+          }
+        }
       }
     } catch (error) {
       console.error("[v0] Error fetching reservations:", error)
@@ -975,6 +995,12 @@ export default function ReservationsPage() {
                       <Phone className="h-3 w-3 flex-shrink-0" />
                       <span className="truncate">{reservation.customer_phone || "Non renseigné"}</span>
                     </CardDescription>
+                    {reservation.customer_phone && (customerVisits[reservation.customer_phone] || 0) > 1 && (
+                      <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-pink-900/30 border border-pink-700/40 text-pink-400 text-[10px] sm:text-xs w-fit">
+                        <Heart className="h-2.5 w-2.5 fill-pink-400" />
+                        Client fidèle · {customerVisits[reservation.customer_phone]} réservations
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5">
                     {(reservation.reservation_time || "").slice(0, 5) <= "15:59" ? (

@@ -39,7 +39,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { name, price, tax_rate, category, routing, out_of_stock, button_color, status } = await request.json()
+    const { name, price, tax_rate, category, routing, out_of_stock, button_color, status, is_piatto_del_giorno } = await request.json()
     const supabase = await createClient()
 
     let categoryId = null
@@ -74,6 +74,10 @@ export async function POST(request: Request) {
     if (out_of_stock !== undefined) {
       newItem.out_of_stock = out_of_stock
       newItem.out_of_stock_date = out_of_stock ? new Date().toISOString().split("T")[0] : null
+    }
+
+    if (is_piatto_del_giorno !== undefined) {
+      newItem.is_piatto_del_giorno = Boolean(is_piatto_del_giorno)
     }
 
     const { data, error } = await supabase.from("menu_items").insert(newItem).select().single()

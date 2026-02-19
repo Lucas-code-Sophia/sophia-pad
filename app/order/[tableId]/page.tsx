@@ -1232,11 +1232,16 @@ export default function OrderPage() {
                   className={`p-3 sm:p-4 transition-colors ${
                     isOutOfStock
                       ? "bg-red-900/30 border-2 border-red-700 opacity-60 cursor-not-allowed"
-                      : `cursor-pointer ${colorClasses || "bg-slate-800 border-slate-700 hover:bg-slate-750"}`
+                      : item.is_piatto_del_giorno
+                        ? `cursor-pointer border-2 border-amber-500/70 ring-1 ring-amber-500/30 ${colorClasses || "bg-slate-800 hover:bg-slate-750"}`
+                        : `cursor-pointer ${colorClasses || "bg-slate-800 border-slate-700 hover:bg-slate-750"}`
                   }`}
                   onClick={() => !isOutOfStock && handleMenuItemClick(item)}
                 >
                   <div className="text-center">
+                    {item.is_piatto_del_giorno && (
+                      <div className="text-amber-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">⭐ Suggestion</div>
+                    )}
                     <div className={`font-semibold text-sm sm:text-base mb-1 truncate ${isLightColor ? "text-slate-900" : "text-white"}`}>
                       {item.name}
                     </div>

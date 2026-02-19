@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle, CheckCircle, Settings, Edit, ArrowUp, ArrowDown, Palette, ShieldAlert } from "lucide-react"
+import { ArrowLeft, Plus, Pencil, Trash2, Search, AlertCircle, CheckCircle, Settings, Edit, ArrowUp, ArrowDown, Palette, ShieldAlert, Star } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import type { MenuCategory, MenuItem, Allergen } from "@/lib/types"
@@ -42,6 +42,7 @@ export default function MenuEditorPage() {
     out_of_stock: false,
     button_color: "",
     status: true,
+    is_piatto_del_giorno: false,
   })
 
   useEffect(() => {
@@ -110,6 +111,7 @@ export default function MenuEditorPage() {
           out_of_stock: itemData.out_of_stock,
           button_color: itemData.button_color || null,
           status: itemData.status !== undefined ? itemData.status : true,
+          is_piatto_del_giorno: (itemData as any).is_piatto_del_giorno || false,
         }),
       })
 
@@ -129,7 +131,7 @@ export default function MenuEditorPage() {
         setEditDialog(false)
         setEditingItem(null)
         setItemAllergenIds([])
-        setNewItem({ name: "", price: "", tax_rate: "20", category: "", routing: "kitchen", out_of_stock: false, button_color: "", status: true })
+        setNewItem({ name: "", price: "", tax_rate: "20", category: "", routing: "kitchen", out_of_stock: false, button_color: "", status: true, is_piatto_del_giorno: false })
         fetchMenu()
       }
     } catch (error) {
@@ -276,6 +278,23 @@ export default function MenuEditorPage() {
       }
     } catch (error) {
       console.error("[v0] Error toggling out of stock:", error)
+    }
+  }
+
+  const toggleSuggestion = async (id: string, current: boolean) => {
+    try {
+      const response = await fetch(`/api/menu/items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_piatto_del_giorno: !current }),
+      })
+      if (response.ok) {
+        setMenuItems((prev) =>
+          prev.map((item) => (item.id === id ? { ...item, is_piatto_del_giorno: !current } : item))
+        )
+      }
+    } catch (error) {
+      console.error("[v0] Error toggling suggestion:", error)
     }
   }
 
@@ -458,6 +477,12 @@ export default function MenuEditorPage() {
                         {item.status === false && (
                           <Badge className="bg-slate-600 text-xs">Masqué</Badge>
                         )}
+                        {item.is_piatto_del_giorno && (
+                          <Badge className="bg-amber-500 text-black text-xs flex items-center gap-1">
+                            <Star className="h-3 w-3 fill-current" />
+                            Suggestion
+                          </Badge>
+                        )}
                         {item.out_of_stock && (
                           <Badge className="bg-red-600 text-xs flex items-center gap-1">
                             <AlertCircle className="h-3 w-3" />
@@ -500,6 +525,19 @@ export default function MenuEditorPage() {
                             Mettre en rupture
                           </>
                         )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toggleSuggestion(item.id, item.is_piatto_del_giorno || false)}
+                        className={`${
+                          item.is_piatto_del_giorno
+                            ? "bg-amber-500 hover:bg-amber-600 border-amber-400 text-black"
+                            : "bg-slate-600 hover:bg-slate-500 border-slate-500 text-slate-300"
+                        } h-8 w-8 sm:h-9 sm:w-9 p-0`}
+                        title={item.is_piatto_del_giorno ? "Retirer suggestion" : "Marquer comme suggestion"}
+                      >
+                        <Star className={`h-3 w-3 sm:h-4 sm:w-4 ${item.is_piatto_del_giorno ? "fill-current" : ""}`} />
                       </Button>
                       <Button
                         size="sm"
@@ -675,6 +713,37 @@ export default function MenuEditorPage() {
                 <option value="true">Rupture</option>
               </select>
             </div>
+            {/* Suggestion du chef */}
+            <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-md">
+              <div className="flex items-center gap-2">
+                <Star className={`h-4 w-4 ${
+                  (editingItem ? editingItem.is_piatto_del_giorno : false) ? "text-amber-400 fill-amber-400" : "text-slate-400"
+                }`} />
+                <Label className="text-sm cursor-pointer">Suggestion du chef</Label>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  editingItem
+                    ? setEditingItem({ ...editingItem, is_piatto_del_giorno: !editingItem.is_piatto_del_giorno })
+                    : setNewItem({ ...newItem, is_piatto_del_giorno: !(newItem as any).is_piatto_del_giorno })
+                }
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  (editingItem ? editingItem.is_piatto_del_giorno : (newItem as any).is_piatto_del_giorno)
+                    ? "bg-amber-500"
+                    : "bg-slate-600"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    (editingItem ? editingItem.is_piatto_del_giorno : (newItem as any).is_piatto_del_giorno)
+                      ? "translate-x-6"
+                      : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+
             {/* Allergen assignment */}
             {allergens.length > 0 && (
               <div>

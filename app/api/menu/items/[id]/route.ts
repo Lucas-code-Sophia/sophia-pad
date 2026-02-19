@@ -4,7 +4,7 @@ import { normalizeMenuButtonColor } from "@/lib/menu-colors"
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { name, price, tax_rate, category, routing, out_of_stock, button_color, status } = await request.json()
+    const { name, price, tax_rate, category, routing, out_of_stock, button_color, status, is_piatto_del_giorno } = await request.json()
     const supabase = await createClient()
     const { id } = await params // ← CORRECTION Next.js 15
 
@@ -36,6 +36,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
     if (status !== undefined) {
       updateData.status = Boolean(status)
+    }
+
+    if (is_piatto_del_giorno !== undefined) {
+      updateData.is_piatto_del_giorno = Boolean(is_piatto_del_giorno)
     }
 
     const { error } = await supabase.from("menu_items").update(updateData).eq("id", id) // ← UTILISE id

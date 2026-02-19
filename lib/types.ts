@@ -91,6 +91,7 @@ export interface MenuItem {
   out_of_stock_date?: string
   category?: string
   stock_quantity?: number // Current stock level from inventory
+  is_piatto_del_giorno?: boolean // Suggestion du chef / Menu du jour
 }
 
 export interface Order {
