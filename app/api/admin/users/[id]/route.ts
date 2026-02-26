@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { name, pin, disabled } = await request.json()
+    const { name, pin, disabled, can_access_bill } = await request.json()
     const supabase = await createClient()
 
     // Validation du PIN si fourni (6 chiffres)
@@ -15,11 +15,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (name) updateData.name = name
     if (pin) updateData.pin = pin
     if (typeof disabled === "boolean") updateData.disabled = disabled
+    if (typeof can_access_bill === "boolean") updateData.can_access_bill = can_access_bill
 
     const { error } = await supabase.from("users").update(updateData).eq("id", params.id)
 
     if (error) {
       console.error("[v0] Error updating user:", error)
+      if (error.message?.includes("can_access_bill")) {
+        return NextResponse.json(
+          { error: "La colonne can_access_bill est manquante. Appliquez la migration SQL d'abord." },
+          { status: 400 },
+        )
+      }
       return NextResponse.json({ error: "Failed to update user" }, { status: 500 })
     }
 

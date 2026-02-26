@@ -171,6 +171,27 @@ export default function AdminPage() {
     }
   }
 
+  const handleToggleBillAccess = async (userId: string, canAccessBill: boolean) => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ can_access_bill: canAccessBill }),
+      })
+
+      if (response.ok) {
+        fetchUsers()
+        return
+      }
+
+      const error = await response.json().catch(() => ({}))
+      alert(error?.error || "Impossible de modifier l'accès addition")
+    } catch (error) {
+      console.error("[v0] Error toggling bill access:", error)
+      alert("Erreur lors de la mise à jour du droit addition")
+    }
+  }
+
   const handleExportSales = async () => {
     try {
       const response = await fetch("/api/admin/sales/export")
@@ -765,6 +786,14 @@ export default function AdminPage() {
                     </div>
                     <div className="text-sm text-slate-300 flex flex-wrap items-center gap-2">
                       <span>{u.role === "manager" ? "Manager" : "Serveur"}</span>
+                      {u.role === "server" && (
+                        <>
+                          <span className="text-slate-600">•</span>
+                          <span className={u.can_access_bill ? "text-blue-300" : "text-slate-400"}>
+                            Addition: {u.can_access_bill ? "autorisée" : "masquée"}
+                          </span>
+                        </>
+                      )}
                       <span className="text-slate-600">•</span>
                       <span>PIN: <span className="font-mono font-bold text-blue-400">{u.pin}</span></span>
                     </div>
@@ -789,6 +818,16 @@ export default function AdminPage() {
                     >
                       {u.disabled ? "Activer" : "Désactiver"}
                     </Button>
+                    {u.role === "server" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleToggleBillAccess(u.id, !u.can_access_bill)}
+                        className={`${u.can_access_bill ? "bg-blue-900/30 hover:bg-blue-900/50 border-blue-700 text-blue-300" : "bg-slate-900/40 hover:bg-slate-900/60 border-slate-500 text-slate-300"}`}
+                      >
+                        {u.can_access_bill ? "Addition ON" : "Addition OFF"}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"

@@ -28,6 +28,10 @@ ADD COLUMN IF NOT EXISTS complimentary_count INTEGER DEFAULT 0;
 ALTER TABLE supplements
 ADD COLUMN IF NOT EXISTS tax_rate DECIMAL(5,2) DEFAULT 10;
 
+-- 3c. Ajouter la permission d'accès au bouton Addition par utilisateur
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS can_access_bill BOOLEAN DEFAULT FALSE;
+
 -- 4. Créer des index pour optimiser les performances
 CREATE INDEX IF NOT EXISTS idx_tables_opened_by ON tables(opened_by);
 CREATE INDEX IF NOT EXISTS idx_order_items_created_by_server_id ON order_items(created_by_server_id);
@@ -40,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_sales_complimentary ON daily_sales(date, se
 -- UPDATE tables SET opened_by = NULL, opened_by_name = NULL WHERE opened_by IS NOT NULL;
 -- UPDATE order_items SET created_by_server_id = NULL WHERE created_by_server_id IS NOT NULL;
 -- UPDATE daily_sales SET complimentary_amount = 0, complimentary_count = 0 WHERE complimentary_amount IS NOT NULL;
+-- UPDATE users SET can_access_bill = TRUE WHERE role = 'manager';
 
 -- ========================================
 -- VÉRIFICATION
@@ -48,6 +53,6 @@ CREATE INDEX IF NOT EXISTS idx_daily_sales_complimentary ON daily_sales(date, se
 -- Vérifier que les colonnes ont été ajoutées
 SELECT column_name, data_type, is_nullable 
 FROM information_schema.columns 
-WHERE table_name IN ('tables', 'order_items', 'daily_sales') 
-AND column_name IN ('opened_by', 'opened_by_name', 'created_by_server_id', 'printed_plan_at', 'printed_fired_at', 'complimentary_amount', 'complimentary_count')
+WHERE table_name IN ('tables', 'order_items', 'daily_sales', 'users') 
+AND column_name IN ('opened_by', 'opened_by_name', 'created_by_server_id', 'printed_plan_at', 'printed_fired_at', 'complimentary_amount', 'complimentary_count', 'can_access_bill')
 ORDER BY table_name, column_name;

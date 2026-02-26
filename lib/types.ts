@@ -4,6 +4,7 @@ export interface User {
   pin: string
   role: "server" | "manager"
   disabled?: boolean
+  can_access_bill?: boolean
   created_at: string
 }
 

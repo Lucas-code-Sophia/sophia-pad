@@ -1075,8 +1075,15 @@ export default function OrderPage() {
     return ""
   }
 
+  const canAccessBill = user?.role === "manager" || Boolean(user?.can_access_bill)
+
   // Vérifier s'il reste des plats non envoyés avant d'aller à l'addition
   const handleBillClick = () => {
+    if (!canAccessBill) {
+      alert("Vous n'avez pas l'autorisation d'accéder à l'addition.")
+      return
+    }
+
     const unprocessedItems = cart.filter(item => 
       item.status === "pending" || item.status === "to_follow_1" || item.status === "to_follow_2"
     )
@@ -1167,15 +1174,17 @@ export default function OrderPage() {
                 <span className="text-xs sm:text-sm">Remettre la table disponible</span>
               </Button>
             )}
-          <Button
-            onClick={handleBillClick}
-            variant="outline"
-            size="sm"
-            className="bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
-            disabled={!currentOrder || existingItems.length === 0}
-          >
-            <span className="text-xs sm:text-sm">Addition</span>
-          </Button>
+          {canAccessBill && (
+            <Button
+              onClick={handleBillClick}
+              variant="outline"
+              size="sm"
+              className="bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
+              disabled={!currentOrder || existingItems.length === 0}
+            >
+              <span className="text-xs sm:text-sm">Addition</span>
+            </Button>
+          )}
         </div>
       </div>
 

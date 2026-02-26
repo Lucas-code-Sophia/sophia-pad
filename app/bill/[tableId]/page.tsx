@@ -61,6 +61,7 @@ export default function BillPage() {
   })
   const [offerQuantity, setOfferQuantity] = useState(1)
   const [complimentaryReason, setComplimentaryReason] = useState("")
+  const canAccessBill = user?.role === "manager" || Boolean(user?.can_access_bill)
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -69,10 +70,16 @@ export default function BillPage() {
   }, [user, isLoading, router])
 
   useEffect(() => {
-    if (user && tableId) {
+    if (user && tableId && canAccessBill) {
       fetchData()
     }
-  }, [user, tableId])
+  }, [user, tableId, canAccessBill])
+
+  useEffect(() => {
+    if (!isLoading && user && !canAccessBill) {
+      router.push(`/order/${tableId}`)
+    }
+  }, [user, isLoading, canAccessBill, router, tableId])
 
   useEffect(() => {
     if (tableId) {
@@ -458,6 +465,10 @@ export default function BillPage() {
         <div className="text-white text-xl">Chargement...</div>
       </div>
     )
+  }
+
+  if (user && !canAccessBill) {
+    return null
   }
 
   if (!order || (items.length === 0 && supplements.length === 0)) {
