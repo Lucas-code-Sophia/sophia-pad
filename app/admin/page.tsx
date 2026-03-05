@@ -294,6 +294,10 @@ export default function AdminPage() {
     )
   }
 
+  if (!user || user.role !== "manager") {
+    return null
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 p-3 sm:p-6">
       <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

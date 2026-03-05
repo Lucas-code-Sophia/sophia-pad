@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Calendar, TrendingUp, Users, DollarSign, CreditCard, Banknote } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 interface ServerStats {
   server_id: string
@@ -36,6 +37,57 @@ interface DailySalesData {
   serverStats: ServerStats[]
 }
 
+interface TransactionItemDetail {
+  id: string
+  menu_item_id: string
+  menu_name: string
+  quantity: number
+  price: number
+  notes?: string
+  status: string
+  is_complimentary: boolean
+  complimentary_reason?: string
+  line_total: number
+}
+
+interface TransactionSupplementDetail {
+  id: string
+  name: string
+  amount: number
+  notes?: string
+  is_complimentary: boolean
+  complimentary_reason?: string
+  created_at: string
+}
+
+interface TransactionPaymentDetail {
+  id: string
+  amount: number
+  payment_method: "cash" | "card" | "other"
+  tip_amount?: number
+  created_at: string
+}
+
+interface TransactionDetailResponse {
+  sale: DailySalesRecord
+  order: {
+    id: string
+    table_id: string
+    server_id: string
+    created_at: string
+    closed_at?: string
+  } | null
+  items: TransactionItemDetail[]
+  supplements: TransactionSupplementDetail[]
+  payments: TransactionPaymentDetail[]
+  paymentBreakdown: {
+    cash: number
+    card: number
+    other: number
+    total: number
+  }
+}
+
 export default function HistoryPage() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
@@ -48,15 +100,26 @@ export default function HistoryPage() {
   const [salesData, setSalesData] = useState<DailySalesData | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedServer, setExpandedServer] = useState<string | null>(null)
+  const [selectedTransaction, setSelectedTransaction] = useState<DailySalesRecord | null>(null)
+  const [transactionDetail, setTransactionDetail] = useState<TransactionDetailResponse | null>(null)
+  const [transactionDetailLoading, setTransactionDetailLoading] = useState(false)
+  const [transactionDetailError, setTransactionDetailError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isLoading && !user) {
+    if (isLoading) return
+
+    if (!user) {
       router.push("/login")
+      return
+    }
+
+    if (user.role !== "manager") {
+      router.push("/floor-plan")
     }
   }, [user, isLoading, router])
 
   useEffect(() => {
-    if (user) {
+    if (user?.role === "manager") {
       fetchSalesData()
     }
   }, [user, selectedDate])
@@ -76,12 +139,37 @@ export default function HistoryPage() {
     }
   }
 
-  if (isLoading || loading) {
+  const openTransactionDetail = async (sale: DailySalesRecord) => {
+    setSelectedTransaction(sale)
+    setTransactionDetail(null)
+    setTransactionDetailError(null)
+    setTransactionDetailLoading(true)
+
+    try {
+      const response = await fetch(`/api/daily-sales/${sale.id}`)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData?.error || "Chargement du détail impossible")
+      }
+      const detailData = await response.json()
+      setTransactionDetail(detailData)
+    } catch (error) {
+      setTransactionDetailError(error instanceof Error ? error.message : "Erreur de chargement")
+    } finally {
+      setTransactionDetailLoading(false)
+    }
+  }
+
+  if (isLoading || (user?.role === "manager" && loading)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-900">
         <div className="text-white text-xl">Chargement...</div>
       </div>
     )
+  }
+
+  if (!user || user.role !== "manager") {
+    return null
   }
 
   const getPaymentIcon = (method: string) => {
@@ -106,8 +194,7 @@ export default function HistoryPage() {
     }
   }
 
-  const isAdmin = user?.role === "manager"
-  // </CHANGE>
+  const isAdmin = user.role === "manager"
 
   return (
     <div className="min-h-screen bg-slate-900 p-3 sm:p-4">
@@ -292,6 +379,7 @@ export default function HistoryPage() {
 
       <div>
         <h2 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4">Toutes les tables encaissées</h2>
+        <p className="text-xs sm:text-sm text-slate-400 mb-2">Cliquez sur une ligne pour voir le détail complet.</p>
         <Card className="bg-slate-800 border-slate-700">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[600px]">
@@ -307,7 +395,11 @@ export default function HistoryPage() {
               <tbody>
                 {salesData?.sales && salesData.sales.length > 0 ? (
                   salesData.sales.map((sale) => (
-                    <tr key={sale.id} className="border-b border-slate-700 hover:bg-slate-750">
+                    <tr
+                      key={sale.id}
+                      className="border-b border-slate-700 hover:bg-slate-750 cursor-pointer"
+                      onClick={() => openTransactionDetail(sale)}
+                    >
                       <td className="p-3 sm:p-4 text-slate-300 text-xs sm:text-sm">
                         {new Date(sale.created_at).toLocaleTimeString("fr-FR", {
                           hour: "2-digit",
@@ -341,6 +433,161 @@ export default function HistoryPage() {
           </div>
         </Card>
       </div>
+
+      <Dialog
+        open={selectedTransaction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTransaction(null)
+            setTransactionDetail(null)
+            setTransactionDetailError(null)
+            setTransactionDetailLoading(false)
+          }
+        }}
+      >
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Détail de la transaction</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {selectedTransaction
+                ? `Table ${selectedTransaction.table_number} • ${new Date(selectedTransaction.created_at).toLocaleString("fr-FR")}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {transactionDetailLoading ? (
+            <div className="py-6 text-center text-slate-300">Chargement du détail...</div>
+          ) : transactionDetailError ? (
+            <div className="py-6 text-center text-red-400">{transactionDetailError}</div>
+          ) : transactionDetail ? (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Card className="bg-slate-900 border-slate-700 p-3">
+                  <p className="text-xs text-slate-400 mb-1">Montant transaction</p>
+                  <p className="text-lg font-semibold text-green-400">
+                    {Number(transactionDetail.sale.total_amount).toFixed(2)} €
+                  </p>
+                </Card>
+                <Card className="bg-slate-900 border-slate-700 p-3">
+                  <p className="text-xs text-slate-400 mb-1">Serveur</p>
+                  <p className="text-sm font-semibold text-white">{transactionDetail.sale.server_name}</p>
+                </Card>
+                <Card className="bg-slate-900 border-slate-700 p-3">
+                  <p className="text-xs text-slate-400 mb-1">Date ciblée</p>
+                  <p className="text-sm font-semibold text-white">{transactionDetail.sale.date}</p>
+                </Card>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-300 mb-2">Ventilation des paiements</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
+                  <Card className="bg-slate-900 border-slate-700 p-2">
+                    <p className="text-xs text-slate-400">Espèces</p>
+                    <p className="text-sm font-semibold text-white">{transactionDetail.paymentBreakdown.cash.toFixed(2)} €</p>
+                  </Card>
+                  <Card className="bg-slate-900 border-slate-700 p-2">
+                    <p className="text-xs text-slate-400">Carte</p>
+                    <p className="text-sm font-semibold text-white">{transactionDetail.paymentBreakdown.card.toFixed(2)} €</p>
+                  </Card>
+                  <Card className="bg-slate-900 border-slate-700 p-2">
+                    <p className="text-xs text-slate-400">Autre</p>
+                    <p className="text-sm font-semibold text-white">{transactionDetail.paymentBreakdown.other.toFixed(2)} €</p>
+                  </Card>
+                  <Card className="bg-slate-900 border-slate-700 p-2">
+                    <p className="text-xs text-slate-400">Total encaissé</p>
+                    <p className="text-sm font-semibold text-green-400">{transactionDetail.paymentBreakdown.total.toFixed(2)} €</p>
+                  </Card>
+                </div>
+
+                <div className="space-y-2">
+                  {transactionDetail.payments.length > 0 ? (
+                    transactionDetail.payments.map((payment) => (
+                      <div key={payment.id} className="flex items-center justify-between bg-slate-900 border border-slate-700 rounded p-2">
+                        <div className="flex items-center gap-2 text-slate-300">
+                          {getPaymentIcon(payment.payment_method)}
+                          <span className="text-sm">{getPaymentLabel(payment.payment_method)}</span>
+                          <span className="text-xs text-slate-500">
+                            {new Date(payment.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-white">{Number(payment.amount).toFixed(2)} €</p>
+                          {(payment.tip_amount || 0) > 0 && (
+                            <p className="text-xs text-amber-400">Pourboire: {Number(payment.tip_amount).toFixed(2)} €</p>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-400">Aucun détail de paiement disponible.</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-300 mb-2">Détail de la commande</h3>
+                <div className="space-y-2">
+                  {transactionDetail.items.length > 0 ? (
+                    transactionDetail.items.map((item) => (
+                      <div key={item.id} className="bg-slate-900 border border-slate-700 rounded p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm text-white">
+                            {item.quantity} x {item.menu_name}
+                          </p>
+                          <p className={`text-sm font-semibold ${item.is_complimentary ? "text-slate-500 line-through" : "text-white"}`}>
+                            {(item.is_complimentary ? 0 : item.line_total).toFixed(2)} €
+                          </p>
+                        </div>
+                        <div className="text-xs text-slate-400 mt-1">
+                          Prix unit.: {Number(item.price).toFixed(2)} € • Statut: {item.status}
+                        </div>
+                        {item.notes && <div className="text-xs text-slate-400 italic mt-1">Note: {item.notes}</div>}
+                        {item.is_complimentary && (
+                          <div className="text-xs text-green-400 mt-1">
+                            Offert{item.complimentary_reason ? ` • ${item.complimentary_reason}` : ""}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-400">Aucun article trouvé.</p>
+                  )}
+                </div>
+              </div>
+
+              {transactionDetail.supplements.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-300 mb-2">Suppléments</h3>
+                  <div className="space-y-2">
+                    {transactionDetail.supplements.map((supplement) => (
+                      <div key={supplement.id} className="bg-slate-900 border border-slate-700 rounded p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm text-white">{supplement.name}</p>
+                          <p
+                            className={`text-sm font-semibold ${
+                              supplement.is_complimentary ? "text-slate-500 line-through" : "text-white"
+                            }`}
+                          >
+                            {(supplement.is_complimentary ? 0 : Number(supplement.amount)).toFixed(2)} €
+                          </p>
+                        </div>
+                        {supplement.notes && <div className="text-xs text-slate-400 italic mt-1">Note: {supplement.notes}</div>}
+                        {supplement.is_complimentary && (
+                          <div className="text-xs text-green-400 mt-1">
+                            Offert{supplement.complimentary_reason ? ` • ${supplement.complimentary_reason}` : ""}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-slate-400">Aucun détail disponible.</div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

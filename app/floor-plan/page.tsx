@@ -999,14 +999,16 @@ export default function FloorPlanPage() {
             <Calendar className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
             <span className="hidden sm:inline">Réservations</span>
           </Button>
-          <Button
-            onClick={() => router.push("/history")}
-            size="sm"
-            className="bg-orange-600 hover:bg-orange-700 whitespace-nowrap text-xs sm:text-sm"
-          >
-            <History className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Historique</span>
-          </Button>
+          {user?.role === "manager" && (
+            <Button
+              onClick={() => router.push("/history")}
+              size="sm"
+              className="bg-orange-600 hover:bg-orange-700 whitespace-nowrap text-xs sm:text-sm"
+            >
+              <History className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Historique</span>
+            </Button>
+          )}
           <Dialog
             open={showTableList}
             onOpenChange={(open) => {
