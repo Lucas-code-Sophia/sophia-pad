@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, CreditCard, Banknote, Printer, Users, CheckCircle, Gift, Plus, Minus } from "lucide-react"
+import { ArrowLeft, CreditCard, Banknote, Printer, Users, CheckCircle, Gift, Plus, Minus, Mail } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -61,6 +61,15 @@ export default function BillPage() {
   })
   const [offerQuantity, setOfferQuantity] = useState(1)
   const [complimentaryReason, setComplimentaryReason] = useState("")
+  const [billPreviewDialogOpen, setBillPreviewDialogOpen] = useState(false)
+  const [mealTicketDialogOpen, setMealTicketDialogOpen] = useState(false)
+  const [mealTicketMealsCount, setMealTicketMealsCount] = useState(3)
+  const [mealTicketTotal, setMealTicketTotal] = useState("")
+  const [mealTicketIncludeTax, setMealTicketIncludeTax] = useState(true)
+  const [mealTicketTaxRate, setMealTicketTaxRate] = useState<10 | 20>(10)
+  const [ticketEmail, setTicketEmail] = useState("")
+  const [sendingBillEmail, setSendingBillEmail] = useState(false)
+  const [sendingMealEmail, setSendingMealEmail] = useState(false)
   const canAccessBill = user?.role === "manager" || Boolean(user?.can_access_bill)
 
   useEffect(() => {
@@ -111,6 +120,12 @@ export default function BillPage() {
       localStorage.setItem(PAYMENT_STATE_KEY + tableId, JSON.stringify(state))
     }
   }, [tableId, splitMode, splitCount, selectedItemQuantities, customAmount, showCustomAmount, loading])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const lastEmail = window.localStorage.getItem("last_ticket_email") || ""
+    if (lastEmail) setTicketEmail(lastEmail)
+  }, [])
 
   const fetchData = async () => {
     try {
@@ -367,99 +382,358 @@ export default function BillPage() {
     }
   }
 
-  const printBill = () => {
+  const formatCurrency = (value: number) => `${value.toFixed(2)} €`
+
+  const escapeHtml = (value: string | undefined | null) =>
+    (value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;")
+
+  const openPrintWindow = (html: string) => {
     const printWindow = window.open("", "_blank")
-    if (printWindow) {
-      const total = calculateTotal()
-      const formatCurrency = (value: number) => `${value.toFixed(2)} €`
-
-      const taxBreakdown = items.reduce(
-        (acc, item) => {
-          if (item.is_complimentary) return acc
-          const rate = Number(item.menu_item?.tax_rate) || 0
-          const lineTotal = item.price * item.quantity
-          const lineTax = rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
-          if (rate === 10) acc.tax10 += lineTax
-          if (rate === 20) acc.tax20 += lineTax
-          return acc
-        },
-        { tax10: 0, tax20: 0 },
-      )
-
-      const supplementTax = supplements.reduce(
-        (acc, sup) => {
-          if (sup.is_complimentary) return acc
-          const rate = Number(sup.tax_rate ?? 10)
-          const lineTotal = sup.amount
-          const lineTax = rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
-          if (rate === 10) acc.tax10 += lineTax
-          if (rate === 20) acc.tax20 += lineTax
-          return acc
-        },
-        { tax10: 0, tax20: 0 },
-      )
-
-      const tax10 = taxBreakdown.tax10 + supplementTax.tax10
-      const tax20 = taxBreakdown.tax20 + supplementTax.tax20
-      const subtotal = Math.max(0, total - tax10 - tax20)
-
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Addition - Table ${table?.table_number}</title>
-            <style>
-              body { font-family: monospace; padding: 12px; max-width: 320px; margin: 0 auto; }
-              .divider { border-top: 1px dashed #000; margin: 8px 0; }
-              .item { display: flex; justify-content: space-between; margin: 4px 0; }
-              .note { font-size: 10px; color: #333; font-style: italic; margin-left: 8px; }
-              .complimentary { color: #666; text-decoration: line-through; }
-              .total { border-top: 1px solid #000; margin-top: 8px; padding-top: 6px; font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; }
-              .kv { display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0; }
-              .footer { text-align: center; margin-top: 12px; font-size: 10px; }
-            </style>
-          </head>
-          <body>
-            <div style="text-align:center;font-weight:bold;font-size:16px;">RESTAURANT SOPHIA</div>
-            <div style="text-align:center;font-size:10px;">67 Boulevard de la plage</div>
-            <div style="text-align:center;font-size:10px;">33970, Cap-Ferret</div>
-            <div style="text-align:center;font-size:10px;">SIRET : 940 771 488 00027</div>
-            <div class="divider"></div>
-            <div style="display:flex;justify-content:space-between;font-size:10px;">
-              <div style="font-weight:bold;font-size:12px;">Table ${table?.table_number}</div>
-              <div>Serveur : ${user?.name || "-"}</div>
-            </div>
-            <div style="font-size:10px;color:#333;">${new Date().toLocaleString("fr-FR")}</div>
-            <div style="margin: 10px 0;">
-              ${items
-                .map(
-                  (item) => `
-                <div>
-                  <div class="item ${item.is_complimentary ? "complimentary" : ""}">
-                    <span>${item.quantity}x ${item.menu_item?.name}${item.is_complimentary ? " (OFFERT)" : ""}</span>
-                    <span>${item.is_complimentary ? "0.00" : (item.price * item.quantity).toFixed(2)} €</span>
-                  </div>
-                  ${item.notes ? `<div class="note">↳ ${item.notes}</div>` : ""}
-                </div>
-              `,
-                )
-                .join("")}
-            </div>
-            <div class="kv"><span>Sous total</span><span>${formatCurrency(subtotal)}</span></div>
-            <div class="kv"><span>TVA 10%</span><span>${formatCurrency(tax10)}</span></div>
-            <div class="kv"><span>TVA 20%</span><span>${formatCurrency(tax20)}</span></div>
-            <div class="total">
-              <span>TOTAL</span>
-              <span>${formatCurrency(total)}</span>
-            </div>
-            <div class="divider"></div>
-            <div class="footer">Merci de votre visite chez SOPHIA</div>
-            <div class="footer">Tel pour réserver : 05 57 18 21 88</div>
-            <div class="footer">À très vite chez nous !</div>
-          </body>
-        </html>
-      `)
-      printWindow.document.close()
+    if (!printWindow) {
+      alert("Le navigateur a bloqué la fenêtre d'impression. Autorisez les popups puis réessayez.")
+      return
+    }
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.onafterprint = () => {
+      printWindow.close()
+    }
+    setTimeout(() => {
       printWindow.print()
+    }, 150)
+  }
+
+  const getBillTaxBreakdown = () => {
+    const total = calculateTotal()
+
+    const itemTax = items.reduce(
+      (acc, item) => {
+        if (item.is_complimentary) return acc
+        const rate = Number(item.menu_item?.tax_rate) || 0
+        const lineTotal = item.price * item.quantity
+        const lineTax = rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
+        if (rate === 10) acc.tax10 += lineTax
+        if (rate === 20) acc.tax20 += lineTax
+        return acc
+      },
+      { tax10: 0, tax20: 0 },
+    )
+
+    const supplementTax = supplements.reduce(
+      (acc, supplement) => {
+        if (supplement.is_complimentary) return acc
+        const rate = Number(supplement.tax_rate ?? 10)
+        const lineTax = rate > 0 ? supplement.amount - supplement.amount / (1 + rate / 100) : 0
+        if (rate === 10) acc.tax10 += lineTax
+        if (rate === 20) acc.tax20 += lineTax
+        return acc
+      },
+      { tax10: 0, tax20: 0 },
+    )
+
+    const tax10 = itemTax.tax10 + supplementTax.tax10
+    const tax20 = itemTax.tax20 + supplementTax.tax20
+    const subtotal = Math.max(0, total - tax10 - tax20)
+
+    return { total, subtotal, tax10, tax20 }
+  }
+
+  const buildTicketHtml = (title: string, body: string) => `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(title)}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { font-family: monospace; padding: 12px; max-width: 320px; margin: 0 auto; color: #000; background: #fff; }
+          .center { text-align: center; }
+          .divider { border-top: 1px dashed #000; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; }
+          .item-name { max-width: 70%; word-break: break-word; }
+          .note { font-size: 10px; color: #333; font-style: italic; margin-left: 8px; }
+          .section-title { font-size: 10px; font-weight: bold; margin: 8px 0 2px; text-transform: uppercase; }
+          .complimentary { color: #666; text-decoration: line-through; }
+          .total { border-top: 1px solid #000; margin-top: 8px; padding-top: 6px; font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; }
+          .kv { display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0; gap: 8px; }
+          .footer { text-align: center; margin-top: 12px; font-size: 10px; }
+          .meta { display:flex; justify-content:space-between; font-size:10px; gap:8px; }
+          @media print {
+            html, body { margin: 0; padding: 6px; max-width: none; }
+          }
+        </style>
+      </head>
+      <body>${body}</body>
+    </html>
+  `
+
+  const getTicketHeaderHtml = (ticketTitle: string) => `
+    <div class="center" style="font-weight:bold;font-size:16px;">${escapeHtml(ticketTitle)}</div>
+    <div class="center" style="font-size:10px;">67 Boulevard de la plage</div>
+    <div class="center" style="font-size:10px;">33970, Cap-Ferret</div>
+    <div class="center" style="font-size:10px;">SIRET : 940 771 488 00027</div>
+    <div class="divider"></div>
+    <div class="meta">
+      <div style="font-weight:bold;font-size:12px;">Table ${escapeHtml(table?.table_number || "-")}</div>
+      <div>Serveur : ${escapeHtml(table?.opened_by_name || user?.name || "-")}</div>
+    </div>
+    <div style="font-size:10px;color:#333;">${escapeHtml(new Date().toLocaleString("fr-FR"))}</div>
+  `
+
+  const buildBillTicketHtml = () => {
+    const { total, subtotal, tax10, tax20 } = getBillTaxBreakdown()
+    const remaining = Math.max(0, total - paidAmount)
+
+    const itemsHtml = items
+      .map((item) => {
+        const itemName = item.menu_item?.name || "Article"
+        const lineTotal = item.is_complimentary ? 0 : item.price * item.quantity
+        return `
+          <div>
+            <div class="row ${item.is_complimentary ? "complimentary" : ""}">
+              <span class="item-name">${item.quantity}x ${escapeHtml(itemName)}${item.is_complimentary ? " (OFFERT)" : ""}</span>
+              <span>${formatCurrency(lineTotal)}</span>
+            </div>
+            ${item.notes ? `<div class="note">↳ ${escapeHtml(item.notes)}</div>` : ""}
+          </div>
+        `
+      })
+      .join("")
+
+    const supplementsHtml =
+      supplements.length === 0
+        ? ""
+        : `
+          <div class="section-title">Suppléments</div>
+          ${supplements
+            .map((supplement) => {
+              const lineTotal = supplement.is_complimentary ? 0 : supplement.amount
+              return `
+                <div>
+                  <div class="row ${supplement.is_complimentary ? "complimentary" : ""}">
+                    <span class="item-name">${escapeHtml(supplement.name)}${supplement.is_complimentary ? " (OFFERT)" : ""}</span>
+                    <span>${formatCurrency(lineTotal)}</span>
+                  </div>
+                  ${supplement.notes ? `<div class="note">↳ ${escapeHtml(supplement.notes)}</div>` : ""}
+                </div>
+              `
+            })
+            .join("")}
+        `
+
+    const body = `
+      ${getTicketHeaderHtml("RESTAURANT SOPHIA")}
+      <div style="margin: 10px 0;">
+        ${itemsHtml}
+        ${supplementsHtml}
+      </div>
+      <div class="kv"><span>Sous total</span><span>${formatCurrency(subtotal)}</span></div>
+      <div class="kv"><span>TVA 10%</span><span>${formatCurrency(tax10)}</span></div>
+      <div class="kv"><span>TVA 20%</span><span>${formatCurrency(tax20)}</span></div>
+      <div class="total">
+        <span>TOTAL</span>
+        <span>${formatCurrency(total)}</span>
+      </div>
+      ${paidAmount > 0 ? `<div class="kv"><span>Déjà payé</span><span>-${formatCurrency(paidAmount)}</span></div>` : ""}
+      ${paidAmount > 0 ? `<div class="kv" style="font-weight:bold;"><span>Reste à payer</span><span>${formatCurrency(remaining)}</span></div>` : ""}
+      <div class="divider"></div>
+      <div class="footer">Merci de votre visite chez SOPHIA</div>
+      <div class="footer">Tel pour réserver : 05 57 18 21 88</div>
+      <div class="footer">À très vite chez nous !</div>
+    `
+
+    return buildTicketHtml(`Addition - Table ${table?.table_number || "-"}`, body)
+  }
+
+  const buildMealTicketHtml = () => {
+    const total = Math.max(0, Number.parseFloat(mealTicketTotal) || 0)
+    const rate = Number(mealTicketTaxRate)
+    const taxAmount = mealTicketIncludeTax && rate > 0 ? total - total / (1 + rate / 100) : 0
+    const subtotal = mealTicketIncludeTax ? Math.max(0, total - taxAmount) : total
+    const mealsCount = Math.max(1, mealTicketMealsCount || 1)
+
+    const body = `
+      ${getTicketHeaderHtml("TICKET REPAS")}
+      <div style="margin: 10px 0;">
+        <div class="row">
+          <span class="item-name">${mealsCount} repas</span>
+          <span>${formatCurrency(total)}</span>
+        </div>
+        <div class="note">Ticket simplifié sans détail des articles</div>
+      </div>
+      ${
+        mealTicketIncludeTax
+          ? `
+            <div class="kv"><span>Sous total HT</span><span>${formatCurrency(subtotal)}</span></div>
+            <div class="kv"><span>TVA ${rate}%</span><span>${formatCurrency(taxAmount)}</span></div>
+          `
+          : `<div class="kv"><span>TVA</span><span>Non affichée</span></div>`
+      }
+      <div class="total">
+        <span>TOTAL</span>
+        <span>${formatCurrency(total)}</span>
+      </div>
+      <div class="divider"></div>
+      <div class="footer">Justificatif repas</div>
+    `
+
+    return buildTicketHtml(`Ticket repas - Table ${table?.table_number || "-"}`, body)
+  }
+
+  const TICKET_TEXT_WIDTH = 42
+  const separatorLine = "-".repeat(TICKET_TEXT_WIDTH)
+
+  const formatTicketTextRow = (left: string, right: string, width = TICKET_TEXT_WIDTH) => {
+    const safeLeft = (left || "").trim()
+    const safeRight = (right || "").trim()
+    const minSpacing = 1
+    const maxLeftLength = Math.max(0, width - safeRight.length - minSpacing)
+    const trimmedLeft = safeLeft.length > maxLeftLength ? `${safeLeft.slice(0, Math.max(0, maxLeftLength - 1))}…` : safeLeft
+    const spaces = Math.max(minSpacing, width - trimmedLeft.length - safeRight.length)
+    return `${trimmedLeft}${" ".repeat(spaces)}${safeRight}`
+  }
+
+  const buildBillTicketPdfLines = () => {
+    const { total, subtotal, tax10, tax20 } = getBillTaxBreakdown()
+    const remaining = Math.max(0, total - paidAmount)
+    const lines: string[] = []
+
+    lines.push("RESTAURANT SOPHIA")
+    lines.push("67 Boulevard de la plage")
+    lines.push("33970 Cap-Ferret")
+    lines.push("SIRET : 940 771 488 00027")
+    lines.push(separatorLine)
+    lines.push(`Table ${table?.table_number || "-"}`)
+    lines.push(`Serveur: ${table?.opened_by_name || user?.name || "-"}`)
+    lines.push(new Date().toLocaleString("fr-FR"))
+    lines.push(separatorLine)
+
+    for (const item of items) {
+      const lineTotal = item.is_complimentary ? 0 : item.price * item.quantity
+      const name = `${item.quantity}x ${item.menu_item?.name || "Article"}${item.is_complimentary ? " (OFFERT)" : ""}`
+      lines.push(formatTicketTextRow(name, formatCurrency(lineTotal)))
+      if (item.notes) lines.push(`  > ${item.notes}`)
+    }
+
+    if (supplements.length > 0) {
+      lines.push(separatorLine)
+      lines.push("SUPPLEMENTS")
+      for (const supplement of supplements) {
+        const lineTotal = supplement.is_complimentary ? 0 : supplement.amount
+        const name = `${supplement.name}${supplement.is_complimentary ? " (OFFERT)" : ""}`
+        lines.push(formatTicketTextRow(name, formatCurrency(lineTotal)))
+        if (supplement.notes) lines.push(`  > ${supplement.notes}`)
+      }
+    }
+
+    lines.push(separatorLine)
+    lines.push(formatTicketTextRow("Sous total", formatCurrency(subtotal)))
+    lines.push(formatTicketTextRow("TVA 10%", formatCurrency(tax10)))
+    lines.push(formatTicketTextRow("TVA 20%", formatCurrency(tax20)))
+    lines.push(formatTicketTextRow("TOTAL", formatCurrency(total)))
+    if (paidAmount > 0) {
+      lines.push(formatTicketTextRow("Deja paye", `-${formatCurrency(paidAmount)}`))
+      lines.push(formatTicketTextRow("Reste a payer", formatCurrency(remaining)))
+    }
+    lines.push(separatorLine)
+    lines.push("Merci de votre visite chez SOPHIA")
+    lines.push("Reservation : 05 57 18 21 88")
+    lines.push("A tres vite chez nous !")
+
+    return lines
+  }
+
+  const buildMealTicketPdfLines = () => {
+    const total = Math.max(0, Number.parseFloat(mealTicketTotal) || 0)
+    const rate = Number(mealTicketTaxRate)
+    const taxAmount = mealTicketIncludeTax && rate > 0 ? total - total / (1 + rate / 100) : 0
+    const subtotal = mealTicketIncludeTax ? Math.max(0, total - taxAmount) : total
+    const mealsCount = Math.max(1, mealTicketMealsCount || 1)
+    const lines: string[] = []
+
+    lines.push("RESTAURANT SOPHIA")
+    lines.push("TICKET REPAS")
+    lines.push(separatorLine)
+    lines.push(`Table ${table?.table_number || "-"}`)
+    lines.push(new Date().toLocaleString("fr-FR"))
+    lines.push(separatorLine)
+    lines.push(formatTicketTextRow(`${mealsCount} repas`, formatCurrency(total)))
+    lines.push("Ticket simplifie sans detail des articles")
+    lines.push(separatorLine)
+    if (mealTicketIncludeTax) {
+      lines.push(formatTicketTextRow("Sous total HT", formatCurrency(subtotal)))
+      lines.push(formatTicketTextRow(`TVA ${rate}%`, formatCurrency(taxAmount)))
+    } else {
+      lines.push(formatTicketTextRow("TVA", "Non affichee"))
+    }
+    lines.push(formatTicketTextRow("TOTAL", formatCurrency(total)))
+    lines.push(separatorLine)
+    lines.push("Justificatif repas")
+
+    return lines
+  }
+
+  const openBillPreview = () => {
+    setBillPreviewDialogOpen(true)
+  }
+
+  const openMealTicketPreview = () => {
+    const defaultMealsCount = table?.current_covers && table.current_covers > 0 ? table.current_covers : 3
+    setMealTicketMealsCount(defaultMealsCount)
+    setMealTicketTotal(calculateRemainingAmount().toFixed(2))
+    setMealTicketIncludeTax(true)
+    setMealTicketTaxRate(10)
+    setMealTicketDialogOpen(true)
+  }
+
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+
+  const sendTicketByEmail = async (ticketType: "addition" | "repas", html: string, pdfLines: string[]) => {
+    const email = ticketEmail.trim()
+    if (!email || !isValidEmail(email)) {
+      alert("Merci de saisir une adresse email valide.")
+      return
+    }
+
+    const setSending = ticketType === "addition" ? setSendingBillEmail : setSendingMealEmail
+    setSending(true)
+
+    try {
+      const subject = `Ticket ${ticketType} - Table ${table?.table_number || "-"}`
+      const response = await fetch("/api/bill/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: email,
+          subject,
+          html,
+          pdfLines,
+          ticketType,
+          tableNumber: table?.table_number || "-",
+        }),
+      })
+
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        alert(result?.error || "Impossible d'envoyer le ticket par email")
+        return
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("last_ticket_email", email)
+      }
+      alert(`Ticket ${ticketType} envoyé à ${email}`)
+    } catch (error) {
+      console.error("[v0] Error sending ticket by email:", error)
+      alert("Erreur lors de l'envoi du ticket par email")
+    } finally {
+      setSending(false)
     }
   }
 
@@ -498,6 +772,11 @@ export default function BillPage() {
   const selectedItemsCount = Array.from(selectedItemQuantities.values()).reduce((sum, qty) => sum + qty, 0)
   const complimentaryCount =
     items.filter((item) => item.is_complimentary).length + supplements.filter((sup) => sup.is_complimentary).length
+  const billTicketHtml = buildBillTicketHtml()
+  const mealTicketHtml = buildMealTicketHtml()
+  const billTicketPdfLines = buildBillTicketPdfLines()
+  const mealTicketPdfLines = buildMealTicketPdfLines()
+  const mealTicketTotalValue = Math.max(0, Number.parseFloat(mealTicketTotal) || 0)
 
   return (
     <div className="min-h-screen bg-slate-900 p-2 sm:p-4">
@@ -520,10 +799,26 @@ export default function BillPage() {
             </Badge>
           )}
         </div>
-        <Button onClick={printBill} variant="outline" size="sm" className="bg-slate-800 text-white border-slate-700">
-          <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-          <span className="text-xs sm:text-sm">Imprimer</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={openBillPreview}
+            variant="outline"
+            size="sm"
+            className="bg-slate-800 text-white border-slate-700"
+          >
+            <Printer className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="text-xs sm:text-sm">Ticket addition</span>
+          </Button>
+          <Button
+            onClick={openMealTicketPreview}
+            variant="outline"
+            size="sm"
+            className="bg-slate-800 text-white border-slate-700"
+          >
+            <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="text-xs sm:text-sm">Ticket repas</span>
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4">
@@ -882,6 +1177,165 @@ export default function BillPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={billPreviewDialogOpen} onOpenChange={setBillPreviewDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-[95vw] sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Aperçu ticket addition - Table {table?.table_number}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded border border-slate-600 overflow-hidden">
+              <iframe title="Aperçu ticket addition" srcDoc={billTicketHtml} className="w-full h-[60vh] bg-white" />
+            </div>
+            <div className="space-y-4">
+              <p className="text-sm text-slate-300">
+                Cet aperçu correspond au ticket qui sera envoyé à l'impression.
+              </p>
+              <Button
+                onClick={() => openPrintWindow(billTicketHtml)}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Imprimer le ticket addition
+              </Button>
+              <div className="space-y-2">
+                <Label htmlFor="bill-ticket-email" className="text-sm text-slate-300">
+                  Envoyer ce ticket par email
+                </Label>
+                <Input
+                  id="bill-ticket-email"
+                  type="email"
+                  value={ticketEmail}
+                  onChange={(e) => setTicketEmail(e.target.value)}
+                  placeholder="client@exemple.com"
+                  className="bg-slate-900 border-slate-700"
+                />
+                <Button
+                  onClick={() => sendTicketByEmail("addition", billTicketHtml, billTicketPdfLines)}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  disabled={sendingBillEmail}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  {sendingBillEmail ? "Envoi en cours..." : "Envoyer le ticket addition"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mealTicketDialogOpen} onOpenChange={setMealTicketDialogOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-[95vw] sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Ticket repas - Aperçu et impression</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm">Nombre de repas</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={mealTicketMealsCount}
+                  onChange={(e) => setMealTicketMealsCount(Math.max(1, Number.parseInt(e.target.value) || 1))}
+                  className="bg-slate-900 border-slate-700 mt-1"
+                />
+              </div>
+
+              <div>
+                <Label className="text-sm">Montant total</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={mealTicketTotal}
+                  onChange={(e) => setMealTicketTotal(e.target.value)}
+                  className="bg-slate-900 border-slate-700 mt-1"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={mealTicketIncludeTax}
+                  onCheckedChange={(checked) => setMealTicketIncludeTax(checked === true)}
+                  id="meal-ticket-tax"
+                />
+                <Label htmlFor="meal-ticket-tax" className="text-sm cursor-pointer">
+                  Afficher le détail TVA sur le ticket repas
+                </Label>
+              </div>
+
+              <div>
+                <Label className="text-sm">Taux de TVA</Label>
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    type="button"
+                    variant={mealTicketTaxRate === 10 ? "default" : "outline"}
+                    className={
+                      mealTicketTaxRate === 10
+                        ? "bg-blue-600 hover:bg-blue-700"
+                        : "bg-slate-900 border-slate-700 text-white"
+                    }
+                    onClick={() => setMealTicketTaxRate(10)}
+                    disabled={!mealTicketIncludeTax}
+                  >
+                    10%
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={mealTicketTaxRate === 20 ? "default" : "outline"}
+                    className={
+                      mealTicketTaxRate === 20
+                        ? "bg-blue-600 hover:bg-blue-700"
+                        : "bg-slate-900 border-slate-700 text-white"
+                    }
+                    onClick={() => setMealTicketTaxRate(20)}
+                    disabled={!mealTicketIncludeTax}
+                  >
+                    20%
+                  </Button>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => openPrintWindow(mealTicketHtml)}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+                disabled={mealTicketTotalValue <= 0}
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Imprimer le ticket repas
+              </Button>
+              <div className="space-y-2">
+                <Label htmlFor="meal-ticket-email" className="text-sm text-slate-300">
+                  Envoyer ce ticket par email
+                </Label>
+                <Input
+                  id="meal-ticket-email"
+                  type="email"
+                  value={ticketEmail}
+                  onChange={(e) => setTicketEmail(e.target.value)}
+                  placeholder="client@exemple.com"
+                  className="bg-slate-900 border-slate-700"
+                />
+                <Button
+                  onClick={() => sendTicketByEmail("repas", mealTicketHtml, mealTicketPdfLines)}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  disabled={sendingMealEmail || mealTicketTotalValue <= 0}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  {sendingMealEmail ? "Envoi en cours..." : "Envoyer le ticket repas"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded border border-slate-600 overflow-hidden">
+              <iframe title="Aperçu ticket repas" srcDoc={mealTicketHtml} className="w-full h-[60vh] bg-white" />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={paymentDialog}
