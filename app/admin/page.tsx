@@ -224,7 +224,10 @@ export default function AdminPage() {
       })
 
       if (response.ok) {
-        alert("Menu importé avec succès!")
+        const result = await response.json().catch(() => ({}))
+        const imported = Number(result?.imported || 0)
+        const skipped = Number(result?.skipped || 0)
+        alert(`Menu importé avec succès (${imported} lignes importées${skipped > 0 ? `, ${skipped} ignorées` : ""})`)
         setCsvFile(null)
       } else {
         const error = await response.json()
@@ -554,15 +557,15 @@ export default function AdminPage() {
                 <Upload className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
               </div>
               <div>
-                <CardTitle className="text-white text-base sm:text-lg">Import CSV</CardTitle>
-                <CardDescription className="text-slate-400 text-xs sm:text-sm">Importer un menu</CardDescription>
+                <CardTitle className="text-white text-base sm:text-lg">Import Excel / CSV</CardTitle>
+                <CardDescription className="text-slate-400 text-xs sm:text-sm">Importer un menu avec détails</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-3 p-4 sm:p-6 pt-0">
             <Input
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
               className="bg-slate-700 border-slate-600 text-white text-sm"
             />

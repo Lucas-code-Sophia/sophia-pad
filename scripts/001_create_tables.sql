@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.menu_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   category_id UUID NOT NULL REFERENCES public.menu_categories(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  details TEXT,
   price DECIMAL(10, 2) NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('food', 'drink')),
   created_at TIMESTAMPTZ DEFAULT NOW()

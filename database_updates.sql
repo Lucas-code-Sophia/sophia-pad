@@ -32,6 +32,10 @@ ADD COLUMN IF NOT EXISTS tax_rate DECIMAL(5,2) DEFAULT 10;
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS can_access_bill BOOLEAN DEFAULT FALSE;
 
+-- 3d. Ajouter un champ de détails pour les plats/boissons (affiché en prise de commande)
+ALTER TABLE menu_items
+ADD COLUMN IF NOT EXISTS details TEXT;
+
 -- 4. Créer des index pour optimiser les performances
 CREATE INDEX IF NOT EXISTS idx_tables_opened_by ON tables(opened_by);
 CREATE INDEX IF NOT EXISTS idx_order_items_created_by_server_id ON order_items(created_by_server_id);
@@ -57,6 +61,6 @@ CREATE INDEX IF NOT EXISTS idx_supplements_order_id ON supplements(order_id);
 -- Vérifier que les colonnes ont été ajoutées
 SELECT column_name, data_type, is_nullable 
 FROM information_schema.columns 
-WHERE table_name IN ('tables', 'order_items', 'daily_sales', 'users') 
-AND column_name IN ('opened_by', 'opened_by_name', 'created_by_server_id', 'printed_plan_at', 'printed_fired_at', 'complimentary_amount', 'complimentary_count', 'can_access_bill')
+WHERE table_name IN ('tables', 'order_items', 'daily_sales', 'users', 'menu_items')
+AND column_name IN ('opened_by', 'opened_by_name', 'created_by_server_id', 'printed_plan_at', 'printed_fired_at', 'complimentary_amount', 'complimentary_count', 'can_access_bill', 'details')
 ORDER BY table_name, column_name;

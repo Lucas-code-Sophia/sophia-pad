@@ -43,7 +43,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { name, price, tax_rate, category, routing, out_of_stock, button_color, status, is_piatto_del_giorno } = await request.json()
+    const { name, details, price, tax_rate, category, routing, out_of_stock, button_color, status, is_piatto_del_giorno } = await request.json()
     const supabase = await createClient()
 
     let categoryId = null
@@ -58,8 +58,12 @@ export async function POST(request: Request) {
       categoryId = catData?.id
     }
 
+    const normalizedDetails =
+      typeof details === "string" && details.trim().length > 0 ? details.trim() : null
+
     const newItem: any = { 
       name, 
+      details: normalizedDetails,
       price: Number.parseFloat(price), 
       tax_rate: Number.parseFloat(tax_rate), 
       routing,

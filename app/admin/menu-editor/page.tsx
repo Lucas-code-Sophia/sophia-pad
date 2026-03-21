@@ -35,6 +35,7 @@ export default function MenuEditorPage() {
   const [itemAllergenIds, setItemAllergenIds] = useState<string[]>([])
   const [newItem, setNewItem] = useState({
     name: "",
+    details: "",
     price: "",
     tax_rate: "20",
     category: "",
@@ -104,6 +105,7 @@ export default function MenuEditorPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: itemData.name,
+          details: itemData.details || null,
           price: Number.parseFloat(itemData.price.toString()),
           tax_rate: Number.parseFloat(itemData.tax_rate.toString()),
           category: itemData.category,
@@ -131,7 +133,18 @@ export default function MenuEditorPage() {
         setEditDialog(false)
         setEditingItem(null)
         setItemAllergenIds([])
-        setNewItem({ name: "", price: "", tax_rate: "20", category: "", routing: "kitchen", out_of_stock: false, button_color: "", status: true, is_piatto_del_giorno: false })
+        setNewItem({
+          name: "",
+          details: "",
+          price: "",
+          tax_rate: "20",
+          category: "",
+          routing: "kitchen",
+          out_of_stock: false,
+          button_color: "",
+          status: true,
+          is_piatto_del_giorno: false,
+        })
         fetchMenu()
       }
     } catch (error) {
@@ -354,6 +367,7 @@ export default function MenuEditorPage() {
   const filteredMenuItems = menuItems.filter(
     (item) =>
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.details && item.details.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase())),
   )
 
@@ -493,6 +507,9 @@ export default function MenuEditorPage() {
                       <div className="text-xs sm:text-sm text-slate-400">
                         {item.price.toFixed(2)} € • TVA {item.tax_rate}% • {item.routing === "kitchen" ? "Cuisine" : "Bar"}
                       </div>
+                      {item.details && (
+                        <div className="text-xs text-slate-300 mt-0.5 italic">{item.details}</div>
+                      )}
                       {allergenMap[item.id] && allergenMap[item.id].length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {allergenMap[item.id].map((a) => (
@@ -596,6 +613,19 @@ export default function MenuEditorPage() {
                     ? setEditingItem({ ...editingItem, name: e.target.value })
                     : setNewItem({ ...newItem, name: e.target.value })
                 }
+                className="bg-slate-700 border-slate-600 text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-sm">Détails affichés (optionnel)</Label>
+              <Input
+                value={editingItem ? editingItem.details ?? "" : newItem.details}
+                onChange={(e) =>
+                  editingItem
+                    ? setEditingItem({ ...editingItem, details: e.target.value })
+                    : setNewItem({ ...newItem, details: e.target.value })
+                }
+                placeholder="Ex: Sec, rond et fruité"
                 className="bg-slate-700 border-slate-600 text-sm"
               />
             </div>

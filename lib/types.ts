@@ -82,6 +82,7 @@ export interface MenuItem {
   id: string
   category_id: string
   name: string
+  details?: string | null
   price: number
   type: "food" | "drink"
   tax_rate: number

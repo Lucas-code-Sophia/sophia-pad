@@ -1393,7 +1393,7 @@ export default function OrderPage() {
     if (item.status === false) return false
     if (!hasSearchQuery && item.category_id !== selectedCategory) return false
     if (!hasSearchQuery) return true
-    return normalizeForSearch(item.name).includes(normalizedSearchQuery)
+    return normalizeForSearch(`${item.name} ${item.details || ""}`).includes(normalizedSearchQuery)
   })
   const cartTotal =
     cart.reduce((sum, item) => sum + (item.isComplimentary ? 0 : getCartItemPrice(item) * item.quantity), 0) +
@@ -1681,6 +1681,7 @@ export default function OrderPage() {
               const isOutOfStock = item.out_of_stock
               const colorClasses = !isOutOfStock ? getMenuButtonColorClasses(item.button_color) : ""
               const isLightColor = !isOutOfStock && item.button_color === "white"
+              const itemDetails = item.details?.trim()
 
               return (
                 <Card
@@ -1701,6 +1702,14 @@ export default function OrderPage() {
                     <div className={`font-semibold text-sm sm:text-base mb-1 truncate ${isLightColor ? "text-slate-900" : "text-white"}`}>
                       {item.name}
                     </div>
+                    {itemDetails && (
+                      <div
+                        className={`text-[10px] sm:text-xs leading-snug mb-1.5 ${isLightColor ? "text-slate-700" : "text-slate-300"}`}
+                        title={itemDetails}
+                      >
+                        {itemDetails}
+                      </div>
+                    )}
                     <div className={`text-xs sm:text-sm mb-2 ${isLightColor ? "text-slate-600" : "text-slate-400"}`}>
                       {item.price.toFixed(2)} €
                     </div>
