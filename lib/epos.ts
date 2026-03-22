@@ -68,9 +68,16 @@ export async function sendToEpos(ip: string, xml: string, opts?: { timeoutMs?: n
   }
 }
 
-export function sampleTicket(kind: "bar" | "kitchen" | "suites"): EposTicket {
+export function sampleTicket(kind: "bar" | "kitchen" | "suites" | "caisse"): EposTicket {
   const now = new Date().toLocaleString("fr-FR")
-  const title = kind === "bar" ? "BAR" : kind === "kitchen" ? "CUISINE" : "SUIVANTS"
+  const title =
+    kind === "bar"
+      ? "BAR"
+      : kind === "kitchen"
+        ? "CUISINE"
+        : kind === "caisse"
+          ? "CAISSE"
+          : "SUIVANTS"
   return {
     title,
     lines: [

@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Check, Clock, Printer } from "lucide-react"
+import { printTicketWithConfiguredMode } from "@/lib/print-client"
+import type { EposTicket } from "@/lib/epos"
 
 export default function KitchenPage() {
   const [tickets, setTickets] = useState<KitchenTicket[]>([])
@@ -52,7 +54,7 @@ export default function KitchenPage() {
       const follow2Items = ticket.items.filter((item) => item.phase === "to_follow_2")
       const line = "-------------------------------"
 
-      const lines: Array<{ content: string; align?: "left" | "center"; bold?: boolean; underline?: boolean; width?: number; height?: number }> = []
+      const lines: EposTicket["lines"] = []
 
       lines.push({ content: `Table ${ticket.table_number}`, bold: true, width: 2, height: 2 })
       if (ticket.server_name) {
@@ -95,23 +97,18 @@ export default function KitchenPage() {
         pushItems(follow2Items, false)
       }
 
-      const res = await fetch("/api/print", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: "kitchen",
-          ticket: {
-            title: "CUISINE",
-            lines,
-            cut: true,
-            beep: true,
-          },
-        }),
+      const result = await printTicketWithConfiguredMode({
+        kind: "kitchen",
+        ticket: {
+          title: "CUISINE",
+          lines,
+          cut: true,
+          beep: true,
+        },
       })
 
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        alert(json?.error || "Échec de l'impression")
+      if (!result.ok) {
+        alert(result.message || "Échec de l'impression")
       }
     }
 

@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server"
 import { buildEposXml, sendToEpos, sampleTicket } from "@/lib/epos"
 
 type Body = {
-  kind: "kitchen" | "bar" | "suites"
+  kind?: "kitchen" | "bar" | "suites" | "caisse"
+  target?: "kitchen" | "bar" | "suites" | "caisse" // legacy alias
   ip?: string
   dryRun?: boolean
   ticket?: {
@@ -17,7 +18,7 @@ type Body = {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Body
-    const kind = body.kind
+    const kind = body.kind ?? body.target
 
     if (!kind) {
       return NextResponse.json({ error: "Missing kind" }, { status: 400 })
@@ -34,7 +35,13 @@ export async function POST(request: Request) {
         .eq("setting_key", "printer_ips")
         .single()
       const value = (data?.setting_value as any) || {}
-      targetIp = kind === "bar" ? value.bar_ip : value.kitchen_ip
+      if (kind === "bar") {
+        targetIp = value.bar_ip
+      } else if (kind === "caisse" || kind === "suites") {
+        targetIp = value.caisse_ip || value.kitchen_ip
+      } else {
+        targetIp = value.kitchen_ip
+      }
     }
 
     if (!targetIp && !dryRun) {

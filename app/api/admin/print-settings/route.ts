@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+const normalizePrintMode = (value: unknown): "server" | "direct_epos" | "airprint" => {
+  if (value === "direct_epos") return "direct_epos"
+  if (value === "airprint") return "airprint"
+  return "server"
+}
+
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -12,7 +18,13 @@ export async function GET() {
 
     if (error && error.code !== "PGRST116") throw error
 
-    const value = (data?.setting_value as any) || { kitchen_ip: "", bar_ip: "" }
+    const rawValue = (data?.setting_value as any) || {}
+    const value = {
+      kitchen_ip: rawValue.kitchen_ip || "",
+      bar_ip: rawValue.bar_ip || "",
+      caisse_ip: rawValue.caisse_ip || "",
+      print_mode: normalizePrintMode(rawValue.print_mode),
+    }
     return NextResponse.json(value)
   } catch (error) {
     console.error("[v0] Error fetching print settings:", error)
@@ -23,7 +35,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { kitchen_ip, bar_ip } = body || {}
+    const { kitchen_ip, bar_ip, caisse_ip, print_mode } = body || {}
 
     const supabase = await createClient()
 
@@ -32,7 +44,12 @@ export async function POST(request: Request) {
       .upsert(
         {
           setting_key: "printer_ips",
-          setting_value: { kitchen_ip: kitchen_ip || "", bar_ip: bar_ip || "" },
+          setting_value: {
+            kitchen_ip: kitchen_ip || "",
+            bar_ip: bar_ip || "",
+            caisse_ip: caisse_ip || "",
+            print_mode: normalizePrintMode(print_mode),
+          },
           updated_at: new Date().toISOString(),
         },
         { onConflict: "setting_key" }

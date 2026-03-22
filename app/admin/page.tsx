@@ -33,6 +33,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import type { DailySales, User } from "@/lib/types"
+import { sampleTicket } from "@/lib/epos"
+import { printTicketWithConfiguredMode, type PrintMode } from "@/lib/print-client"
 
 export default function AdminPage() {
   const { user, isLoading } = useAuth()
@@ -47,6 +49,8 @@ export default function AdminPage() {
   const [showUsersDialog, setShowUsersDialog] = useState(false)
   const [kitchenIp, setKitchenIp] = useState("")
   const [barIp, setBarIp] = useState("")
+  const [caisseIp, setCaisseIp] = useState("")
+  const [printMode, setPrintMode] = useState<PrintMode>("server")
   const [savingPrint, setSavingPrint] = useState(false)
 
   useEffect(() => {
@@ -246,6 +250,8 @@ export default function AdminPage() {
         const data = await res.json()
         setKitchenIp(data.kitchen_ip || "")
         setBarIp(data.bar_ip || "")
+        setCaisseIp(data.caisse_ip || "")
+        setPrintMode(data.print_mode === "direct_epos" || data.print_mode === "airprint" ? data.print_mode : "server")
       }
     } catch (e) {
       console.error("[v0] Error fetching print settings:", e)
@@ -258,31 +264,31 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/print-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kitchen_ip: kitchenIp, bar_ip: barIp }),
+        body: JSON.stringify({ kitchen_ip: kitchenIp, bar_ip: barIp, caisse_ip: caisseIp, print_mode: printMode }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        alert(err?.error || "Échec de l'enregistrement des IPs")
+        alert(err?.error || "Échec de l'enregistrement des paramètres d'impression")
       }
     } catch (e) {
-      alert("Échec de l'enregistrement des IPs")
+      alert("Échec de l'enregistrement des paramètres d'impression")
     } finally {
       setSavingPrint(false)
     }
   }
 
-  const testPrint = async (kind: "kitchen" | "bar") => {
+  const testPrint = async (kind: "kitchen" | "bar" | "caisse") => {
     try {
-      const res = await fetch("/api/print", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind }),
+      const result = await printTicketWithConfiguredMode({
+        kind,
+        ticket: sampleTicket(kind),
+        modeOverride: printMode,
+        ipOverride: kind === "bar" ? barIp : kind === "caisse" ? caisseIp : kitchenIp,
       })
-      if (res.ok) {
-        alert("Test d'impression envoyé")
+      if (result.ok) {
+        alert(`Test d'impression envoyé (mode: ${result.mode})`)
       } else {
-        const err = await res.json().catch(() => ({}))
-        alert(err?.error || "Échec du test d'impression")
+        alert(result.message || "Échec du test d'impression")
       }
     } catch (e) {
       alert("Échec du test d'impression")
@@ -675,12 +681,31 @@ export default function AdminPage() {
           <CardContent className="space-y-3 p-4 sm:p-6 pt-0">
             <div className="grid grid-cols-1 gap-3">
               <div>
+                <Label className="text-sm text-slate-300">Mode d'impression</Label>
+                <select
+                  value={printMode}
+                  onChange={(e) => setPrintMode(e.target.value as PrintMode)}
+                  className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm text-white"
+                >
+                  <option value="server">Serveur (Vercel)</option>
+                  <option value="direct_epos">Direct Epson (LAN local)</option>
+                  <option value="airprint">AirPrint (dialogue iPad)</option>
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  Direct Epson et AirPrint doivent être lancés depuis un appareil sur le Wi-Fi local du restaurant.
+                </p>
+              </div>
+              <div>
                 <Label className="text-sm text-slate-300">IP Cuisine</Label>
                 <Input value={kitchenIp} onChange={(e) => setKitchenIp(e.target.value)} className="bg-slate-700 border-slate-600 text-sm" placeholder="192.168.1.30" />
               </div>
               <div>
                 <Label className="text-sm text-slate-300">IP Bar</Label>
                 <Input value={barIp} onChange={(e) => setBarIp(e.target.value)} className="bg-slate-700 border-slate-600 text-sm" placeholder="192.168.1.31" />
+              </div>
+              <div>
+                <Label className="text-sm text-slate-300">IP Caisse</Label>
+                <Input value={caisseIp} onChange={(e) => setCaisseIp(e.target.value)} className="bg-slate-700 border-slate-600 text-sm" placeholder="192.168.1.32" />
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={savePrintSettings} disabled={savingPrint} className="bg-blue-600 hover:bg-blue-700">
@@ -691,6 +716,9 @@ export default function AdminPage() {
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => testPrint("bar")} className="bg-slate-600 hover:bg-slate-500 border-slate-500">
                   Test Bar
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => testPrint("caisse")} className="bg-slate-600 hover:bg-slate-500 border-slate-500">
+                  Test Caisse
                 </Button>
               </div>
             </div>

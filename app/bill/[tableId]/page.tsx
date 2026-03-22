@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import type { Table, Order, OrderItem, MenuItem, PaymentItem, Supplement } from "@/lib/types"
+import { printTicketWithConfiguredMode } from "@/lib/print-client"
+import type { EposTicket } from "@/lib/epos"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -70,6 +72,8 @@ export default function BillPage() {
   const [ticketEmail, setTicketEmail] = useState("")
   const [sendingBillEmail, setSendingBillEmail] = useState(false)
   const [sendingMealEmail, setSendingMealEmail] = useState(false)
+  const [printingBillTicket, setPrintingBillTicket] = useState(false)
+  const [printingMealTicket, setPrintingMealTicket] = useState(false)
   const canAccessBill = user?.role === "manager" || Boolean(user?.can_access_bill)
 
   const sanitizeIntegerInput = (value: string) => value.replace(/\D/g, "")
@@ -402,24 +406,6 @@ export default function BillPage() {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;")
-
-  const openPrintWindow = (html: string) => {
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) {
-      alert("Le navigateur a bloqué la fenêtre d'impression. Autorisez les popups puis réessayez.")
-      return
-    }
-    printWindow.document.open()
-    printWindow.document.write(html)
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.onafterprint = () => {
-      printWindow.close()
-    }
-    setTimeout(() => {
-      printWindow.print()
-    }, 150)
-  }
 
   const getBillTaxBreakdown = () => {
     const total = calculateTotal()
@@ -857,6 +843,48 @@ export default function BillPage() {
   const mealTicketPdfLines = buildMealTicketPdfLines()
   const mealTicketTotalValue = Math.max(0, Number.parseFloat(mealTicketTotal) || 0)
 
+  const buildEposTicketFromLines = (title: string, lines: string[]): EposTicket => ({
+    title,
+    lines: lines.map((line, index) => ({
+      content: line,
+      align: line === separatorLine ? "center" : "left",
+      bold:
+        index === 0 ||
+        line.startsWith("TOTAL") ||
+        line.startsWith("Table ") ||
+        line.startsWith("RESTAURANT SOPHIA") ||
+        line.startsWith("TICKET REPAS"),
+    })),
+    cut: true,
+    beep: true,
+  })
+
+  const printCaisseTicket = async (ticket: EposTicket, setPrinting: (value: boolean) => void) => {
+    setPrinting(true)
+    try {
+      const result = await printTicketWithConfiguredMode({
+        kind: "caisse",
+        ticket,
+      })
+      if (!result.ok) {
+        alert(result.message || "Échec de l'impression")
+      }
+    } catch (error) {
+      console.error("[v0] Error printing caisse ticket:", error)
+      alert("Échec de l'impression")
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  const handlePrintBillTicket = () => {
+    printCaisseTicket(buildEposTicketFromLines("CAISSE", billTicketPdfLines), setPrintingBillTicket)
+  }
+
+  const handlePrintMealTicket = () => {
+    printCaisseTicket(buildEposTicketFromLines("TICKET REPAS", mealTicketPdfLines), setPrintingMealTicket)
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 p-2 sm:p-4">
       <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
@@ -1273,11 +1301,12 @@ export default function BillPage() {
                 Cet aperçu correspond au ticket qui sera envoyé à l'impression.
               </p>
               <Button
-                onClick={() => openPrintWindow(billTicketHtml)}
+                onClick={handlePrintBillTicket}
                 className="w-full bg-blue-600 hover:bg-blue-700"
+                disabled={printingBillTicket}
               >
                 <Printer className="h-4 w-4 mr-2" />
-                Imprimer le ticket addition
+                {printingBillTicket ? "Impression en cours..." : "Imprimer le ticket addition"}
               </Button>
               <div className="space-y-2">
                 <Label htmlFor="bill-ticket-email" className="text-sm text-slate-300">
@@ -1383,12 +1412,12 @@ export default function BillPage() {
               </div>
 
               <Button
-                onClick={() => openPrintWindow(mealTicketHtml)}
+                onClick={handlePrintMealTicket}
                 className="w-full bg-blue-600 hover:bg-blue-700"
-                disabled={mealTicketTotalValue <= 0}
+                disabled={mealTicketTotalValue <= 0 || printingMealTicket}
               >
                 <Printer className="h-4 w-4 mr-2" />
-                Imprimer le ticket repas
+                {printingMealTicket ? "Impression en cours..." : "Imprimer le ticket repas"}
               </Button>
               <div className="space-y-2">
                 <Label htmlFor="meal-ticket-email" className="text-sm text-slate-300">

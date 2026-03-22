@@ -14,7 +14,8 @@ export default function SettingsPage() {
   const router = useRouter()
   const [ipBar, setIpBar] = useState("")
   const [ipKitchen, setIpKitchen] = useState("")
-  const [printing, setPrinting] = useState<"bar" | "kitchen" | "suites" | null>(null)
+  const [ipCaisse, setIpCaisse] = useState("")
+  const [printing, setPrinting] = useState<"bar" | "kitchen" | "caisse" | null>(null)
   const [printResult, setPrintResult] = useState("")
 
   useEffect(() => {
@@ -26,21 +27,24 @@ export default function SettingsPage() {
   useEffect(() => {
     const b = typeof window !== "undefined" ? window.localStorage.getItem("printer_ip_bar") || "" : ""
     const k = typeof window !== "undefined" ? window.localStorage.getItem("printer_ip_kitchen") || "" : ""
+    const c = typeof window !== "undefined" ? window.localStorage.getItem("printer_ip_caisse") || "" : ""
     setIpBar(b)
     setIpKitchen(k)
+    setIpCaisse(c)
   }, [])
 
-  const saveIps = (bar?: string, kitchen?: string) => {
+  const saveIps = (bar?: string, kitchen?: string, caisse?: string) => {
     if (typeof window === "undefined") return
     if (bar !== undefined) window.localStorage.setItem("printer_ip_bar", bar)
     if (kitchen !== undefined) window.localStorage.setItem("printer_ip_kitchen", kitchen)
+    if (caisse !== undefined) window.localStorage.setItem("printer_ip_caisse", caisse)
   }
 
-  const testPrint = async (target: "bar" | "kitchen" | "suites") => {
+  const testPrint = async (target: "bar" | "kitchen" | "caisse") => {
     setPrintResult("")
     setPrinting(target)
     try {
-      const ip = target === "bar" ? ipBar : ipKitchen
+      const ip = target === "bar" ? ipBar : target === "caisse" ? ipCaisse : ipKitchen
       if (!ip) {
         setPrintResult("IP manquante")
         return
@@ -128,6 +132,18 @@ export default function SettingsPage() {
                   className="bg-slate-900 border-slate-700 text-white"
                 />
               </div>
+              <div>
+                <div className="text-slate-300 text-sm mb-2">IP Caisse</div>
+                <Input
+                  placeholder="192.168.x.x"
+                  value={ipCaisse}
+                  onChange={(e) => {
+                    setIpCaisse(e.target.value)
+                  }}
+                  onBlur={() => saveIps(undefined, undefined, ipCaisse)}
+                  className="bg-slate-900 border-slate-700 text-white"
+                />
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -147,12 +163,12 @@ export default function SettingsPage() {
                 {printing === "kitchen" ? "Test Cuisine…" : "Test Cuisine"}
               </Button>
               <Button
-                onClick={() => testPrint("suites")}
+                onClick={() => testPrint("caisse")}
                 className="bg-yellow-600 hover:bg-yellow-700 text-white"
                 disabled={printing !== null}
                 size="sm"
               >
-                {printing === "suites" ? "Test Suites…" : "Test Suites"}
+                {printing === "caisse" ? "Test Caisse…" : "Test Caisse"}
               </Button>
               {printResult && (
                 <div className="text-sm text-slate-300 ml-2 self-center">{printResult}</div>
