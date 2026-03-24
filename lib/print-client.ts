@@ -65,6 +65,25 @@ const buildAirPrintHtml = (ticket: EposTicket) => {
         line-height: 1.4;
         white-space: pre-wrap;
       }
+      .actions {
+        width: 72mm;
+        margin: 0 auto 8px auto;
+        text-align: center;
+      }
+      .actions p {
+        margin: 6px 0 0 0;
+        font-size: 12px;
+        color: #475569;
+      }
+      .actions button {
+        border: 0;
+        background: #1d4ed8;
+        color: white;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 8px;
+        padding: 10px 14px;
+      }
       h1 {
         margin: 0 0 8px 0;
         font-size: 16px;
@@ -78,13 +97,27 @@ const buildAirPrintHtml = (ticket: EposTicket) => {
     </style>
   </head>
   <body>
+    <section class="actions">
+      <button type="button" onclick="window.print()">Imprimer</button>
+      <p>Si rien ne s'ouvre automatiquement, touche "Imprimer".</p>
+    </section>
     <main class="ticket">
       ${title}
       ${linesHtml}
     </main>
     <script>
-      setTimeout(function () { window.print(); }, 200);
-      window.onafterprint = function () { window.close(); };
+      (function () {
+        function tryPrint() {
+          try {
+            window.focus();
+            window.print();
+          } catch (e) {}
+        }
+        setTimeout(tryPrint, 200);
+      })();
+      window.onafterprint = function () {
+        try { window.close(); } catch (e) {}
+      };
     </script>
   </body>
 </html>`
@@ -161,14 +194,23 @@ const runAirPrint = async (ticket: EposTicket, preOpenedPopup?: Window | null): 
     return { ok: false, mode: "airprint", message: "AirPrint indisponible sur ce terminal" }
   }
 
-  const popup = preOpenedPopup ?? window.open("", "_blank", "noopener,noreferrer")
+  const popup = preOpenedPopup ?? window.open("about:blank", "_blank")
   if (!popup) {
     return { ok: false, mode: "airprint", message: "Autorise les popups pour lancer AirPrint" }
   }
 
-  popup.document.open()
-  popup.document.write(buildAirPrintHtml(ticket))
-  popup.document.close()
+  try {
+    popup.document.open()
+    popup.document.write(buildAirPrintHtml(ticket))
+    popup.document.close()
+    popup.focus()
+  } catch {
+    return {
+      ok: false,
+      mode: "airprint",
+      message: "Impossible d'ouvrir la fenetre AirPrint. Utilise Safari et autorise les popups.",
+    }
+  }
 
   return { ok: true, mode: "airprint" }
 }
@@ -187,7 +229,7 @@ export async function printTicketWithConfiguredMode(params: PrintTicketParams): 
 
   // On iOS, popup must be opened synchronously in user gesture context.
   if (modeOverride === "airprint" && typeof window !== "undefined") {
-    preOpenedAirPrintPopup = window.open("", "_blank", "noopener,noreferrer")
+    preOpenedAirPrintPopup = window.open("about:blank", "_blank")
     if (!preOpenedAirPrintPopup) {
       return { ok: false, mode: "airprint", message: "Autorise les popups pour lancer AirPrint" }
     }
