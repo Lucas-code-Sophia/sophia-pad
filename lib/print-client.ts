@@ -156,12 +156,12 @@ const runDirectEposPrint = async (ip: string, ticket: EposTicket): Promise<Print
   }
 }
 
-const runAirPrint = async (ticket: EposTicket): Promise<PrintResult> => {
+const runAirPrint = async (ticket: EposTicket, preOpenedPopup?: Window | null): Promise<PrintResult> => {
   if (typeof window === "undefined") {
     return { ok: false, mode: "airprint", message: "AirPrint indisponible sur ce terminal" }
   }
 
-  const popup = window.open("", "_blank", "noopener,noreferrer")
+  const popup = preOpenedPopup ?? window.open("", "_blank", "noopener,noreferrer")
   if (!popup) {
     return { ok: false, mode: "airprint", message: "Autorise les popups pour lancer AirPrint" }
   }
@@ -183,6 +183,15 @@ type PrintTicketParams = {
 export async function printTicketWithConfiguredMode(params: PrintTicketParams): Promise<PrintResult> {
   const { kind, modeOverride, ipOverride } = params
   const ticket = params.ticket || sampleTicket(kind)
+  let preOpenedAirPrintPopup: Window | null = null
+
+  // On iOS, popup must be opened synchronously in user gesture context.
+  if (modeOverride === "airprint" && typeof window !== "undefined") {
+    preOpenedAirPrintPopup = window.open("", "_blank", "noopener,noreferrer")
+    if (!preOpenedAirPrintPopup) {
+      return { ok: false, mode: "airprint", message: "Autorise les popups pour lancer AirPrint" }
+    }
+  }
 
   let settings: PrintSettings = { kitchen_ip: "", bar_ip: "", caisse_ip: "", print_mode: "server" }
   try {
@@ -197,7 +206,11 @@ export async function printTicketWithConfiguredMode(params: PrintTicketParams): 
   const resolvedIp = ipOverride || ipFromSettings
 
   if (mode === "airprint") {
-    return runAirPrint(ticket)
+    return runAirPrint(ticket, preOpenedAirPrintPopup)
+  }
+
+  if (preOpenedAirPrintPopup && !preOpenedAirPrintPopup.closed) {
+    preOpenedAirPrintPopup.close()
   }
 
   if (mode === "direct_epos") {
